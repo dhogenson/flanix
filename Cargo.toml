@@ -1,13 +1,16 @@
-[package]
-name = "sync"
+[workspace]
+resolver = "2"
+members = [
+    "crates/utils",
+    "crates/cli"
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-anyhow = "1.0.104"
-aws-config = { version = "1.10.1" }
-aws-sdk-s3 = {version = "1.141.0" }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid"] }
+[workspace.dependencies]
 tokio = {version = "1.53.1", features = ["full"]}
+anyhow = "1.0.104"
 uuid = {version = "1.24.0", features = ["v4"] }
-glob = "0.3.4"
+# Shared dependencies across crates

@@ -1,0 +1,11 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+utils = { path = "../utils", version = "0.1.0"}
+tokio.workspace = true
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
+uuid.workspace = true

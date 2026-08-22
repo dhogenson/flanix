@@ -1,24 +1,28 @@
-use std::path::Path;
-use uuid::Uuid;
 use anyhow::Result;
-use aws_config::{BehaviorVersion};
+use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
     Client,
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
 use glob::glob;
+use std::path::Path;
+use uuid::Uuid;
 
 pub struct Bucket {
     pub name: String,
     pub location: String,
-    pub client: Client
+    pub client: Client,
 }
 
 impl Bucket {
     pub async fn new(name: &str, location: &str) -> Self {
         let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
-        Self { name: name.to_string(), location: location.to_string(), client: Client::new(&config) }
+        Self {
+            name: name.to_string(),
+            location: location.to_string(),
+            client: Client::new(&config),
+        }
     }
 
     pub async fn init(&self) -> Result<()> {
@@ -29,7 +33,7 @@ impl Bucket {
             for bucket in buckets {
                 if bucket.name.unwrap_or_default() == self.name {
                     has_bucket = true;
-                    break
+                    break;
                 }
             }
         }
@@ -71,7 +75,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn upload_directory(&self, path: &str) -> Result<()> {
+    pub async fn upload_directory(&self, uuid: Uuid, path: &str) -> Result<()> {
         for entry in glob(&format!("{}/**/*", path)).expect("Failed to read glob pattern") {
             match entry {
                 Ok(path) => {
