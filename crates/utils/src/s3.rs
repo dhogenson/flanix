@@ -5,7 +5,7 @@ use aws_sdk_s3::{
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
-use glob::glob;
+
 use std::path::Path;
 use uuid::Uuid;
 
@@ -60,33 +60,16 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn upload_file(&self, file_path: &str) -> Result<()> {
+    pub async fn upload_file(&self, uuid: Uuid, file_path: &str) -> Result<()> {
         let file = ByteStream::from_path(Path::new(file_path)).await?;
-        let id = Uuid::new_v4();
 
         self.client
             .put_object()
             .bucket(&self.name)
-            .key(id)
+            .key(uuid)
             .body(file)
             .send()
             .await?;
-
-        Ok(())
-    }
-
-    pub async fn upload_directory(&self, uuid: Uuid, path: &str) -> Result<()> {
-        for entry in glob(&format!("{}/**/*", path)).expect("Failed to read glob pattern") {
-            match entry {
-                Ok(path) => {
-                    if path.is_dir() {
-                        continue;
-                    }
-                    self.upload_file(&path.to_string_lossy()).await?;
-                }
-                Err(e) => eprintln!("Error: {}", e),
-            }
-        }
 
         Ok(())
     }

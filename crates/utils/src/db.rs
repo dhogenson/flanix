@@ -17,9 +17,10 @@ impl Database {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS files (
             id uuid PRIMARY KEY,
-            name TEXT NOT NULL,
+            bucket_key TEXT NOT NULL,
             local_path TEXT NOT NULL,
-            group_id uuid not null
+            group_id uuid not null,
+            created_at timestamp not null default NOW()
             )",
         )
         .execute(&self.pool)
@@ -38,13 +39,21 @@ impl Database {
         Ok(())
     }
 
-    pub async fn add_file(&self, uuid: Uuid, local_path: &str) -> Result<()> {
+    pub async fn add_file(
+        &self,
+        uuid: Uuid,
+        bucket_key: Uuid,
+        local_path: &str,
+        group_id: Uuid,
+    ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO files (id, file_path)
-             VALUES ($1, $2)",
+            "INSERT INTO files (id, bucket_key, local_path, group_id)
+             VALUES ($1, $2, $3, $4)",
         )
         .bind(uuid)
+        .bind(bucket_key)
         .bind(local_path)
+        .bind(group_id)
         .execute(&self.pool)
         .await?;
 
@@ -73,5 +82,14 @@ impl Database {
         .await?;
 
         Ok(exists)
+    }
+
+    pub async fn get_group_id(&self, name: &str) -> Result<Uuid> {
+        let uuid: Uuid = sqlx::query_scalar("SELECT id FROM groups WHERE name = $1")
+            .bind(name)
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(uuid)
     }
 }
