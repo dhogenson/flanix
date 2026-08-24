@@ -1,7 +1,7 @@
 docker compose -f docker-compose.test.yaml up -d --wait
 
-export DATABASE_URL=postgres://user:password@localhost/mydb
-export AWS_ENDPOINT_URL="http://localhost:4566";
+export DATABASE_URL=postgres://user:password@localhost:5433/mydb
+export AWS_ENDPOINT_URL="http://localhost:4567";
 export AWS_DEFAULT_REGION="us-east-1";
 export AWS_ACCESS_KEY_ID="test";
 export AWS_SECRET_ACCESS_KEY="test";

@@ -26,6 +26,14 @@ impl Bucket {
     }
 
     pub async fn init(&self) -> Result<()> {
+        if !self.bucket_exists().await? {
+            self.create_bucket().await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn bucket_exists(&self) -> Result<bool> {
         let result = self.client.list_buckets().send().await?;
         let mut has_bucket = false;
 
@@ -38,11 +46,7 @@ impl Bucket {
             }
         }
 
-        if !has_bucket {
-            self.create_bucket().await?;
-        }
-
-        Ok(())
+        Ok(has_bucket)
     }
 
     pub async fn create_bucket(&self) -> Result<()> {
@@ -62,7 +66,7 @@ impl Bucket {
 
     pub async fn upload_file(&self, uuid: Uuid, file_path: &str) -> Result<()> {
         let file = ByteStream::from_path(Path::new(file_path)).await?;
-
+        println!("{}", self.name);
         self.client
             .put_object()
             .bucket(&self.name)
@@ -72,5 +76,27 @@ impl Bucket {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn object_exists(&self, key: Uuid) -> Result<bool> {
+        match self
+            .client
+            .head_object()
+            .bucket(&self.name)
+            .key(key)
+            .send()
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(err) => {
+                // Check if err is not found
+                if let Some(serice_err) = err.as_service_error() {
+                    if serice_err.is_not_found() {
+                        return Ok(false);
+                    }
+                }
+                Err(err.into())
+            }
+        }
     }
 }

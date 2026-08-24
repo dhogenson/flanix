@@ -12,6 +12,9 @@ tokio.workspace = true
 uuid.workspace = true
 glob = "0.3.4"
 
+[dev-dependencies]
+tempfile = "3.27.0"
+
 
 [lib]
 name = "utils"

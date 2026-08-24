@@ -13,6 +13,10 @@ impl Database {
         Ok(Self { pool: pool })
     }
 
+    pub async fn from_pool(pool: Pool<Postgres>) -> Result<Self> {
+        Ok(Self { pool: pool })
+    }
+
     pub async fn init(&mut self) -> Result<()> {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS files (
