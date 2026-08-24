@@ -18,6 +18,5 @@
         AWS_SECRET_ACCESS_KEY="test";
         DATABASE_URL="postgres://user:password@localhost/mydb";
       };
-
     };
 }
