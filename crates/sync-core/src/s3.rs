@@ -64,7 +64,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn upload_file(&self, uuid: Uuid, file_path: &str) -> Result<()> {
+    pub async fn upload_object(&self, uuid: Uuid, file_path: &str) -> Result<()> {
         let file = ByteStream::from_path(Path::new(file_path)).await?;
         self.client
             .put_object()

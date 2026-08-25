@@ -43,7 +43,7 @@ impl Commands {
                     let bucket_key = Uuid::new_v4();
                     let file_uuid = Uuid::new_v4();
                     self.bucket
-                        .upload_file(bucket_key, &path.to_string_lossy())
+                        .upload_object(bucket_key, &path.to_string_lossy())
                         .await?;
                     self.database
                         .add_file(file_uuid, bucket_key, &path.to_string_lossy(), group_id)

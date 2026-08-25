@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::io::Write;
+use sync_core::Bucket;
 use tempfile::NamedTempFile;
-use utils::Bucket;
 use uuid::Uuid;
 
 // Also tests for the bucket exists function
@@ -28,7 +28,7 @@ async fn test_create_bucket_without_bucket() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_upload_file() -> Result<()> {
+async fn test_upload_object() -> Result<()> {
     let bucket = Bucket::new("test", "us-west-2").await;
     bucket.init().await?;
     let uuid = Uuid::new_v4();
@@ -36,7 +36,7 @@ async fn test_upload_file() -> Result<()> {
     write!(file, "this is a fake file")?;
 
     bucket
-        .upload_file(uuid, &file.path().to_string_lossy())
+        .upload_object(uuid, &file.path().to_string_lossy())
         .await?;
 
     assert!(bucket.object_exists(uuid).await?);

@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/utils",
-    "crates/cli"
+    "crates/sync-core",
+    "crates/sync-cli"
 ]
 
 [workspace.package]

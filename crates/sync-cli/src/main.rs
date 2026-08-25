@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use utils::Commands;
+use sync_core::Commands;
 
 #[derive(Parser)]
 #[command(name = "myapp", about = "A sync program")]

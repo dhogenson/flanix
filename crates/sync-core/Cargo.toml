@@ -1,5 +1,5 @@
 [package]
-name = "utils"
+name = "sync-core"
 version.workspace = true
 edition.workspace = true
 
@@ -17,5 +17,5 @@ tempfile = "3.27.0"
 
 
 [lib]
-name = "utils"
+name = "sync_core"
 path = "src/lib.rs"

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use sqlx::PgPool;
-use utils::Database;
+use sync_core::Database;
 use uuid::Uuid;
 
 #[sqlx::test]
