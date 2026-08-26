@@ -5,9 +5,11 @@
 use anyhow::Result;
 use glob::glob;
 use std::env;
+use std::path::PathBuf;
 
 use crate::Bucket;
 use crate::Database;
+use crate::scan_files;
 use uuid::Uuid;
 
 pub struct Commands {
@@ -28,29 +30,29 @@ impl Commands {
     }
 
     pub async fn push(&self, group_name: String, path: String) -> Result<()> {
+        // TODO: make a error type and return that error
         if !self.database.group_exists(&group_name.to_string()).await? {
             return Ok(());
         }
 
         let group_id = self.database.get_group_id(&group_name).await?;
 
-        for entry in glob(&format!("{}/**/*", path)).expect("Failed to read glob pattern") {
-            match entry {
-                Ok(path) => {
-                    if path.is_dir() {
-                        continue;
-                    }
-                    let bucket_key = Uuid::new_v4();
-                    let file_uuid = Uuid::new_v4();
-                    self.bucket
-                        .upload_object(bucket_key, &path.to_string_lossy())
-                        .await?;
-                    self.database
-                        .add_file(file_uuid, bucket_key, &path.to_string_lossy(), group_id)
-                        .await?;
-                }
-                Err(error) => eprintln!("Error: {}", error),
-            }
+        let files = scan_files(PathBuf::from(&path))?;
+
+        for file in files {
+            let bucket_key = Uuid::new_v4();
+            let file_uuid = Uuid::new_v4();
+            self.bucket
+                .upload_object(bucket_key, &file.path.to_string_lossy())
+                .await?;
+            self.database
+                .add_file(
+                    file_uuid,
+                    bucket_key,
+                    &file.path.to_string_lossy(),
+                    group_id,
+                )
+                .await?;
         }
         Ok(())
     }
