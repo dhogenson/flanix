@@ -1,8 +1,20 @@
 use anyhow::Result;
 use std::io::Write;
 use sync_core::Bucket;
+use sync_core::Config;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
+
+pub async fn create_bucket() -> Result<Bucket> {
+    let config = Config::new()?;
+    let bucket = Bucket::new(
+        &config.bucket_name.to_string(),
+        &config.aws_default_region.to_string(),
+    )
+    .await;
+
+    Ok(bucket)
+}
 
 // Also tests for the bucket exists function
 #[tokio::test]
@@ -16,11 +28,10 @@ async fn test_create_bucket_with_bucket() -> Result<()> {
 }
 
 // Also tests for the bucket exists function
-
 // this code does not remove the bucket
 #[tokio::test]
 async fn test_create_bucket_without_bucket() -> Result<()> {
-    let bucket = Bucket::new("test", "us-west-2").await;
+    let bucket = create_bucket().await?;
 
     assert!(!bucket.bucket_exists().await?);
 
@@ -29,7 +40,8 @@ async fn test_create_bucket_without_bucket() -> Result<()> {
 
 #[tokio::test]
 async fn test_upload_object() -> Result<()> {
-    let bucket = Bucket::new("test", "us-west-2").await;
+    let bucket = create_bucket().await?;
+
     bucket.init().await?;
     let uuid = Uuid::new_v4();
     let mut file = NamedTempFile::new()?;

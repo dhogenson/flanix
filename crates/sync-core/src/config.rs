@@ -2,12 +2,12 @@ use anyhow::Result;
 use std::env;
 
 pub struct Config {
-    bucket_name: String,
-    aws_endpoint: String,
-    aws_default_region: String,
-    aws_access_key_id: String,
-    aws_secret_access_key: String,
-    database_url: String,
+    pub bucket_name: String,
+    pub aws_endpoint: String,
+    pub aws_default_region: String,
+    pub aws_access_key_id: String,
+    pub aws_secret_access_key: String,
+    pub database_url: String,
 }
 
 impl Config {

@@ -3,11 +3,10 @@
  */
 
 use anyhow::Result;
-use glob::glob;
-use std::env;
 use std::path::PathBuf;
 
 use crate::Bucket;
+use crate::Config;
 use crate::Database;
 use crate::scan_files;
 use uuid::Uuid;
@@ -19,8 +18,9 @@ pub struct Commands {
 
 impl Commands {
     pub async fn new() -> Result<Self> {
-        let mut database = Database::new(&env::var("DATABASE_URL")?.to_string()).await?;
-        let bucket = Bucket::new("test", "us-west-2").await;
+        let config = Config::new()?;
+        let mut database = Database::new(&config.database_url).await?;
+        let bucket = Bucket::new(&config.bucket_name, &config.aws_default_region).await;
         database.init().await?;
         bucket.init().await?;
         Ok(Self {

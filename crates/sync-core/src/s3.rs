@@ -25,6 +25,7 @@ impl Bucket {
         }
     }
 
+    /// Created bucket if it does not exists in s3
     pub async fn init(&self) -> Result<()> {
         if !self.bucket_exists().await? {
             self.create_bucket().await?;
