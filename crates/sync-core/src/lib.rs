@@ -8,6 +8,7 @@
 mod commands;
 mod config;
 mod db;
+mod errors;
 mod s3;
 mod scanner;
 

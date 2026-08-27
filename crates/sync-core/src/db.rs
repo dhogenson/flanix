@@ -1,4 +1,5 @@
-use anyhow::Result;
+// use anyhow::Result;
+use crate::errors::DbError;
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use uuid::Uuid;
 
@@ -7,17 +8,17 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn new(url: &str) -> Result<Self> {
+    pub async fn new(url: &str) -> Result<Self, DbError> {
         let pool = PgPoolOptions::new().max_connections(5).connect(url).await?;
 
         Ok(Self { pool: pool })
     }
 
-    pub async fn from_pool(pool: Pool<Postgres>) -> Result<Self> {
-        Ok(Self { pool: pool })
+    pub async fn from_pool(pool: Pool<Postgres>) -> Self {
+        Self { pool: pool }
     }
 
-    pub async fn init(&mut self) -> Result<()> {
+    pub async fn init(&mut self) -> Result<(), DbError> {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS files (
             id uuid PRIMARY KEY,
@@ -49,7 +50,7 @@ impl Database {
         bucket_key: Uuid,
         local_path: &str,
         group_id: Uuid,
-    ) -> Result<()> {
+    ) -> Result<(), DbError> {
         sqlx::query(
             "INSERT INTO files (id, bucket_key, local_path, group_id)
              VALUES ($1, $2, $3, $4)",
@@ -64,7 +65,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn add_group(&self, uuid: Uuid, group_name: &str) -> Result<()> {
+    pub async fn add_group(&self, uuid: Uuid, group_name: &str) -> Result<(), DbError> {
         sqlx::query(
             "INSERT INTO groups (id, name)
              VALUES ($1, $2)",
@@ -77,7 +78,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn group_exists(&self, name: &str) -> Result<bool> {
+    pub async fn group_exists(&self, name: &str) -> Result<bool, DbError> {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM groups WHERE name = $1) AS value_exists;",
         )
@@ -88,11 +89,12 @@ impl Database {
         Ok(exists)
     }
 
-    pub async fn get_group_id(&self, name: &str) -> Result<Uuid> {
+    pub async fn get_group_id(&self, name: &str) -> Result<Uuid, DbError> {
         let uuid: Uuid = sqlx::query_scalar("SELECT id FROM groups WHERE name = $1")
             .bind(name)
-            .fetch_one(&self.pool)
-            .await?;
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| DbError::NotFound(format!("group '{}' not found", name)))?;
 
         Ok(uuid)
     }
