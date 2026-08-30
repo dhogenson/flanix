@@ -1,6 +1,6 @@
 // use anyhow::Result;
 use crate::errors::DbError;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use tokio::fs;
 use uuid::Uuid;
@@ -45,6 +45,12 @@ impl Database {
         let meta_data = fs::metadata(local_path).await?;
         let modified_time: std::time::SystemTime = meta_data.modified()?;
         let modified_time_utc: DateTime<Utc> = modified_time.into();
+
+        // The filesystem gives nanosecond precision, but the DB column only
+        // stores microseconds. Truncate explicitly (rather than relying on
+        // Postgres to silently do it) so the stored value matches the precision
+        // that `files_to_upload` compares against.
+        let modified_time_utc = truncate_to_micros(modified_time_utc);
 
         sqlx::query(
             "INSERT INTO files (id, bucket_key, local_path, modified_at, namespace_id)
@@ -117,19 +123,16 @@ impl Database {
 
         Ok(files)
     }
+}
 
-    // pub async fn get_modifaction_times(
-    //     &self,
-    //     namespace: &str,
-    // ) -> Result<Vec<DateTime<Utc>>, DbError> {
-    //     let namespace_id = self.get_namespace_id(namespace).await?;
-
-    //     let modified_times: Vec<DateTime<Utc>> =
-    //         sqlx::query_scalar("SELECT id FROM files WHERE namespace_id = $1")
-    //             .bind(namespace_id)
-    //             .fetch_all(&self.pool)
-    //             .await?;
-
-    //     Ok(modified_times)
-    // }
+/// Round a timestamp down to microsecond precision, matching the precision of
+/// the `files.modified_at` column. The filesystem reports nanoseconds, so this
+/// keeps stored values consistent with how `files_to_upload` compares them.
+fn truncate_to_micros(t: DateTime<Utc>) -> DateTime<Utc> {
+    let sub_micro_ns = (t.timestamp_subsec_nanos() % 1000) as i64;
+    if sub_micro_ns == 0 {
+        t
+    } else {
+        t - TimeDelta::nanoseconds(sub_micro_ns)
+    }
 }

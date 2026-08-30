@@ -16,9 +16,9 @@ enum Functions {
     /// Add a new sync folder
     Add { name: String },
     /// Sync
-    Push { id: String, path: String },
+    Push { namespace: String, path: String },
     /// Remove an item
-    Pull { id: String, path: String },
+    Pull { namespace: String, path: String },
 }
 
 #[tokio::main]
@@ -28,8 +28,8 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Functions::Add { name } => functions.add(name).await?,
-        Functions::Push { id, path } => functions.push(id, path).await?,
-        Functions::Pull { id, path } => functions.pull(id, path),
+        Functions::Push { namespace, path } => functions.push(namespace, path).await?,
+        Functions::Pull { namespace, path } => functions.pull(namespace, path),
     }
 
     Ok(())

@@ -42,6 +42,8 @@ impl Sync {
         })
     }
 
+    //TODO: maybe rename this to sync and then just have this as the main command
+    /// Uploads new and changed files to the cloud
     pub async fn push(&self, namespace: String, path: String) -> Result<()> {
         // self.files_to_upload(&namespace.to_string(), PathBuf::from(&path))
         //     .await?;
@@ -56,10 +58,6 @@ impl Sync {
         }
 
         let namespace_id = self.database.get_namespace_id(&namespace).await?;
-
-        // let files = self
-        //     .files_to_upload(&namespace.to_string(), PathBuf::from(&path))
-        //     .await?;
 
         let files = self
             .files_to_upload(&namespace, PathBuf::from(&path))
@@ -90,10 +88,19 @@ impl Sync {
         Ok(())
     }
 
+    // TODO:
+    // 1. this is a full rescan of folder which for big folders is bad
+    // 2. the db map is keyed by path so if a folder gets renamed/moved it looks like ts new and gets reuploaded under a new uuid the fix:
+    // content hasing, using something really cheap to store in a database and if a file is renamed you can tell because they are the same hashes
+    // 3. the bucket is not consulted at all, the cloud state is really just "what the db things is in the cloud"
+    // so that means that if an object is deleted from s3 but the db row is still there its treated as up to date
+    // and skipped
+
     async fn files_to_upload(&self, namespace: &str, path: PathBuf) -> Result<Vec<PathBuf>> {
         let local_files = scan_files(path)?;
         let cloud_files = self.database.get_files(namespace).await?;
 
+        // Turn the cloud files into a index, where the key is the PathBuf and the value is the date time
         let cloud_index: HashMap<PathBuf, DateTime<Utc>> = cloud_files
             .into_iter()
             .map(|f| (PathBuf::from(f.local_path), f.modified_at))
@@ -106,11 +113,11 @@ impl Sync {
             let local_mtime = truncate_to_micros(local_mtime);
 
             match cloud_index.get(&local_file.path) {
-                // Not in cloud at all -> needs uploading
+                // not in cloud at all — needs uploading
                 None => to_upload.push(local_file.path),
-                // In cloud, but local file is newer -> needs re-uploading
+                // in cloud, but local file is newer — needs re-uploading
                 Some(cloud_mtime) if local_mtime > *cloud_mtime => to_upload.push(local_file.path),
-                // Otherwise, up to date, skip
+                //TODO: still need to add if the cloud_mtime is greater then local time
                 _ => {}
             }
         }
@@ -121,6 +128,7 @@ impl Sync {
     }
 }
 
+//TODO: rewrite the tests what were made by AI
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,10 +191,6 @@ mod tests {
         paths
     }
 
-    // The files.modified_at column is TIMESTAMPTZ (µs precision) while filesystem
-    // mtimes have nanosecond precision, so the exact mtime read back from the DB
-    // is truncated. Return the smallest value >= t that the column can store so
-    // that "equal at DB precision" cases compare as up-to-date and are skipped.
     fn ceil_to_db_precision(t: DateTime<Utc>) -> DateTime<Utc> {
         let sub_micro_ns = (t.timestamp_subsec_nanos() % 1000) as i64;
         if sub_micro_ns == 0 {
