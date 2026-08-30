@@ -29,13 +29,17 @@ impl Commands {
         })
     }
 
-    pub async fn push(&self, group_name: String, path: String) -> Result<()> {
+    pub async fn push(&self, namespace: String, path: String) -> Result<()> {
         // TODO: make a error type and return that error
-        if !self.database.group_exists(&group_name.to_string()).await? {
+        if !self
+            .database
+            .namespace_exists(&namespace.to_string())
+            .await?
+        {
             return Ok(());
         }
 
-        let group_id = self.database.get_group_id(&group_name).await?;
+        let namespace_id = self.database.get_namespace_id(&namespace).await?;
 
         let files = scan_files(PathBuf::from(&path))?;
 
@@ -50,7 +54,7 @@ impl Commands {
                     file_uuid,
                     bucket_key,
                     &file.path.to_string_lossy(),
-                    group_id,
+                    namespace_id,
                 )
                 .await?;
         }
@@ -60,9 +64,11 @@ impl Commands {
     pub fn pull(&self, _id: String, _path: String) {}
 
     pub async fn add(&self, name: String) -> Result<()> {
-        if !self.database.group_exists(&name.to_string()).await? {
+        if !self.database.namespace_exists(&name.to_string()).await? {
             let uuid = Uuid::new_v4();
-            self.database.add_group(uuid, &name.to_string()).await?;
+            self.database
+                .create_namespace(uuid, &name.to_string())
+                .await?;
         }
         Ok(())
     }

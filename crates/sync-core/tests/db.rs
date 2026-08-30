@@ -7,7 +7,7 @@ use uuid::Uuid;
 async fn test_insert_record(pool: PgPool) -> Result<()> {
     // pool is already migrated and isolated
     sqlx::query!(
-        "INSERT INTO groups (id, name) VALUES ($1, $2)",
+        "INSERT INTO namespaces (id, name) VALUES ($1, $2)",
         uuid::Uuid::new_v4(),
         "test"
     )
@@ -19,15 +19,15 @@ async fn test_insert_record(pool: PgPool) -> Result<()> {
 
 #[sqlx::test]
 async fn test_add_file(pool: PgPool) -> Result<()> {
-    let database = Database::from_pool(pool.clone()).await?;
+    let database = Database::from_pool(pool.clone()).await;
 
     let uuid = Uuid::new_v4();
     let bucket_key = Uuid::new_v4();
     let local_path = "local_path/test.txt";
-    let group_id = Uuid::new_v4();
+    let namespace_id = Uuid::new_v4();
 
     database
-        .add_file(uuid, bucket_key, local_path, group_id)
+        .add_file(uuid, bucket_key, local_path, namespace_id)
         .await?;
 
     let row = sqlx::query!("SELECT id FROM files WHERE id = $1", uuid)
@@ -40,14 +40,14 @@ async fn test_add_file(pool: PgPool) -> Result<()> {
 }
 
 #[sqlx::test]
-async fn test_add_group(pool: PgPool) -> Result<()> {
-    let database = Database::from_pool(pool.clone()).await?;
+async fn test_create_namespace(pool: PgPool) -> Result<()> {
+    let database = Database::from_pool(pool.clone()).await;
 
     let uuid = Uuid::new_v4();
 
-    database.add_group(uuid, "test").await?;
+    database.create_namespace(uuid, "test").await?;
 
-    let row = sqlx::query!("SELECT id FROM groups WHERE id = $1", uuid)
+    let row = sqlx::query!("SELECT id FROM namespaces WHERE id = $1", uuid)
         .fetch_one(&pool)
         .await?;
 
@@ -57,25 +57,25 @@ async fn test_add_group(pool: PgPool) -> Result<()> {
 }
 
 #[sqlx::test]
-async fn test_group_exists(pool: PgPool) -> Result<()> {
-    let database = Database::from_pool(pool.clone()).await?;
+async fn test_namespace_exists(pool: PgPool) -> Result<()> {
+    let database = Database::from_pool(pool.clone()).await;
 
     let uuid = Uuid::new_v4();
 
-    database.add_group(uuid, "test").await?;
-    assert!(database.group_exists("test").await?);
+    database.create_namespace(uuid, "test").await?;
+    assert!(database.namespace_exists("test").await?);
 
     Ok(())
 }
 
 #[sqlx::test]
-async fn test_get_group_id(pool: PgPool) -> Result<()> {
-    let database = Database::from_pool(pool.clone()).await?;
+async fn test_get_namespace_id(pool: PgPool) -> Result<()> {
+    let database = Database::from_pool(pool.clone()).await;
     let uuid = Uuid::new_v4();
 
-    database.add_group(uuid, "test").await?;
+    database.create_namespace(uuid, "test").await?;
 
-    assert_eq!(database.get_group_id("test").await?, uuid);
+    assert_eq!(database.get_namespace_id("test").await?, uuid);
 
     Ok(())
 }

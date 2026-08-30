@@ -22,5 +22,3 @@ impl Config {
         })
     }
 }
-
-// TODO: what is a models folder?

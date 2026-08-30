@@ -2,6 +2,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum DbError {
+    #[error("migrate error: {0}")]
+    MigrateError(#[from] sqlx::migrate::MigrateError),
+
     #[error("database error: {0}")]
     Sqlx(#[from] sqlx::Error),
 
