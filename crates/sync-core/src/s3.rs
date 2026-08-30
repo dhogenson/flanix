@@ -6,6 +6,10 @@ use aws_sdk_s3::{
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
 
+// TODO: figure out what local constatin is and fix it (used ai to fix it for now)
+
+const GLOBAL_REGION: &str = "us-east-1";
+
 use std::path::Path;
 use uuid::Uuid;
 
@@ -51,16 +55,18 @@ impl Bucket {
     }
 
     pub async fn create_bucket(&self) -> Result<()> {
-        let bucket_config = CreateBucketConfiguration::builder()
-            .location_constraint(BucketLocationConstraint::from(self.location.as_str()))
-            .build();
+        let mut req = self.client.create_bucket().bucket(&self.name);
 
-        self.client
-            .create_bucket()
-            .bucket(&self.name)
-            .create_bucket_configuration(bucket_config)
-            .send()
-            .await?;
+        // Only set a location constraint for non-default regions. For us-east-1
+        // the constraint must be omitted entirely or S3 rejects the request.
+        if self.location != GLOBAL_REGION {
+            let bucket_config = CreateBucketConfiguration::builder()
+                .location_constraint(BucketLocationConstraint::from(self.location.as_str()))
+                .build();
+            req = req.create_bucket_configuration(bucket_config);
+        }
+
+        req.send().await?;
 
         Ok(())
     }
@@ -98,5 +104,16 @@ impl Bucket {
                 Err(err.into())
             }
         }
+    }
+
+    pub async fn delete_object(&self, key: Uuid) -> Result<()> {
+        self.client
+            .delete_object()
+            .key(key)
+            .bucket(&self.name)
+            .send()
+            .await?;
+
+        Ok(())
     }
 }

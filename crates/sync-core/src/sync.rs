@@ -63,6 +63,10 @@ impl Sync {
             .files_to_upload(&namespace, PathBuf::from(&path))
             .await?;
 
+        let files_to_delete = self
+            .files_to_delete(&namespace, PathBuf::from(&path))
+            .await?;
+
         for file in files {
             let bucket_key = Uuid::new_v4();
             let file_uuid = Uuid::new_v4();
@@ -73,6 +77,18 @@ impl Sync {
                 .add_file(file_uuid, bucket_key, &file.to_string_lossy(), namespace_id)
                 .await?;
         }
+
+        for file in files_to_delete {
+            let object_key = self
+                .database
+                .get_bucket_key_by_file_path(&namespace, &file.to_string_lossy())
+                .await?;
+            self.bucket.delete_object(object_key).await?;
+            self.database
+                .delete_file(&namespace, &file.to_string_lossy())
+                .await?;
+        }
+
         Ok(())
     }
 
@@ -122,9 +138,23 @@ impl Sync {
             }
         }
 
-        println!("{:?}", to_upload);
-
         Ok(to_upload)
+    }
+
+    async fn files_to_delete(&self, namespace: &str, path: PathBuf) -> Result<Vec<PathBuf>> {
+        let local_files: Vec<PathBuf> = scan_files(path)?.into_iter().map(|f| f.path).collect();
+        let cloud_files = self.database.get_files(namespace).await?;
+
+        let mut to_delete: Vec<PathBuf> = Vec::new();
+
+        for cloud_file in cloud_files {
+            let cloud_path = PathBuf::from(&cloud_file.local_path);
+            if !local_files.contains(&cloud_path) {
+                to_delete.push(cloud_path);
+            }
+        }
+
+        Ok(to_delete)
     }
 }
 

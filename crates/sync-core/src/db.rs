@@ -1,3 +1,6 @@
+// TODO: sometimes a function just takes in a path to return something else, but
+// more than one folder can have a file name so make it also require a namespace to
+//
 // use anyhow::Result;
 use crate::errors::DbError;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -112,6 +115,18 @@ impl Database {
         Ok(uuids)
     }
 
+    pub async fn delete_file(&self, namespace: &str, local_path: &str) -> Result<(), DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        sqlx::query("DELETE FROM files WHERE namespace_id = $1 AND local_path = $2")
+            .bind(namespace_id)
+            .bind(local_path)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
     // TODO: i want to rename everything related to files, because im using files to much in here
     pub async fn get_files(&self, namespace: &str) -> Result<Vec<File>, DbError> {
         let namespace_id = self.get_namespace_id(namespace).await?;
@@ -122,6 +137,25 @@ impl Database {
             .await?;
 
         Ok(files)
+    }
+
+    //TODO: rename this function
+    pub async fn get_bucket_key_by_file_path(
+        &self,
+        namespace: &str,
+        local_path: &str,
+    ) -> Result<Uuid, DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        let file = sqlx::query_scalar(
+            "SELECT bucket_key FROM files WHERE namespace_id = $1 AND local_path = $2",
+        )
+        .bind(namespace_id)
+        .bind(local_path)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(file)
     }
 }
 

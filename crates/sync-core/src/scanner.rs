@@ -26,7 +26,6 @@ pub fn scan_files(path: PathBuf) -> Result<Vec<File>> {
                 if path.is_dir() {
                     continue;
                 };
-
                 let metadata = fs::metadata(&path)?;
 
                 let modified: SystemTime = metadata.modified()?;
