@@ -26,10 +26,20 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let functions = Sync::new().await?;
 
-    match cli.command {
-        Functions::Add { name } => functions.add(name).await?,
-        Functions::Push { namespace, path } => functions.push(namespace, path).await?,
-        Functions::Pull { namespace, path } => functions.pull(namespace, path),
+    let result: anyhow::Result<()> = match cli.command {
+        Functions::Add { name } => functions.add(name).await.map_err(Into::into),
+        Functions::Push { namespace, path } => {
+            functions.push(namespace, path).await.map_err(Into::into)
+        }
+        Functions::Pull { namespace, path } => {
+            functions.pull(namespace, path);
+            Ok(())
+        }
+    };
+
+    if let Err(e) = result {
+        eprintln!("{e}");
+        std::process::exit(1);
     }
 
     Ok(())

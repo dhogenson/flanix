@@ -2,7 +2,6 @@
  * This file is for putting everything together, like for putting db and s3 together
  */
 
-use anyhow::Result;
 use chrono::DateTime;
 use chrono::TimeDelta;
 use chrono::Utc;
@@ -12,6 +11,7 @@ use std::path::PathBuf;
 use crate::Bucket;
 use crate::Config;
 use crate::Database;
+use crate::errors::SyncError;
 use crate::scan_files;
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ pub struct Sync {
 }
 
 impl Sync {
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self, SyncError> {
         let config = Config::new()?;
         let mut database = Database::new(&config.database_url).await?;
         let bucket = Bucket::new(&config.bucket_name, &config.aws_default_region).await;
@@ -42,21 +42,8 @@ impl Sync {
         })
     }
 
-    //TODO: maybe rename this to sync and then just have this as the main command
     /// Uploads new and changed files to the cloud
-    pub async fn push(&self, namespace: String, path: String) -> Result<()> {
-        // self.files_to_upload(&namespace.to_string(), PathBuf::from(&path))
-        //     .await?;
-        // return Ok(());
-        // TODO: make a error type and return that error
-        if !self
-            .database
-            .namespace_exists(&namespace.to_string())
-            .await?
-        {
-            return Ok(());
-        }
-
+    pub async fn push(&self, namespace: String, path: String) -> Result<(), SyncError> {
         let namespace_id = self.database.get_namespace_id(&namespace).await?;
 
         let files = self
@@ -81,7 +68,7 @@ impl Sync {
         for file in files_to_delete {
             let object_key = self
                 .database
-                .get_bucket_key_by_file_path(&namespace, &file.to_string_lossy())
+                .bucket_key_for_path(&namespace, &file.to_string_lossy())
                 .await?;
             self.bucket.delete_object(object_key).await?;
             self.database
@@ -94,7 +81,7 @@ impl Sync {
 
     pub fn pull(&self, _id: String, _path: String) {}
 
-    pub async fn add(&self, name: String) -> Result<()> {
+    pub async fn add(&self, name: String) -> Result<(), SyncError> {
         if !self.database.namespace_exists(&name.to_string()).await? {
             let uuid = Uuid::new_v4();
             self.database
@@ -112,7 +99,11 @@ impl Sync {
     // so that means that if an object is deleted from s3 but the db row is still there its treated as up to date
     // and skipped
 
-    async fn files_to_upload(&self, namespace: &str, path: PathBuf) -> Result<Vec<PathBuf>> {
+    async fn files_to_upload(
+        &self,
+        namespace: &str,
+        path: PathBuf,
+    ) -> Result<Vec<PathBuf>, SyncError> {
         let local_files = scan_files(path)?;
         let cloud_files = self.database.get_files(namespace).await?;
 
@@ -141,7 +132,11 @@ impl Sync {
         Ok(to_upload)
     }
 
-    async fn files_to_delete(&self, namespace: &str, path: PathBuf) -> Result<Vec<PathBuf>> {
+    async fn files_to_delete(
+        &self,
+        namespace: &str,
+        path: PathBuf,
+    ) -> Result<Vec<PathBuf>, SyncError> {
         let local_files: Vec<PathBuf> = scan_files(path)?.into_iter().map(|f| f.path).collect();
         let cloud_files = self.database.get_files(namespace).await?;
 
@@ -162,6 +157,7 @@ impl Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
     use chrono::{DateTime, TimeDelta, Utc};
     use sqlx::PgPool;
     use std::fs;

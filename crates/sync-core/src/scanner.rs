@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::errors::SyncError;
 use chrono::{DateTime, Utc};
 use glob::glob;
 use std::fs;
@@ -18,9 +18,9 @@ impl File {
     }
 }
 
-pub fn scan_files(path: PathBuf) -> Result<Vec<File>> {
+pub fn scan_files(path: PathBuf) -> Result<Vec<File>, SyncError> {
     let mut files: Vec<File> = Vec::new();
-    for entry in glob(&format!("{}/**/*", path.to_string_lossy())).expect("Failed to read glob") {
+    for entry in glob(&format!("{}/**/*", path.to_string_lossy()))? {
         match entry {
             Ok(path) => {
                 if path.is_dir() {

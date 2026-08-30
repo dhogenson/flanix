@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::errors::SyncError;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
     Client,
@@ -30,7 +30,7 @@ impl Bucket {
     }
 
     /// Created bucket if it does not exists in s3
-    pub async fn init(&self) -> Result<()> {
+    pub async fn init(&self) -> Result<(), SyncError> {
         if !self.bucket_exists().await? {
             self.create_bucket().await?;
         }
@@ -38,7 +38,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn bucket_exists(&self) -> Result<bool> {
+    pub async fn bucket_exists(&self) -> Result<bool, SyncError> {
         let result = self.client.list_buckets().send().await?;
         let mut has_bucket = false;
 
@@ -54,7 +54,7 @@ impl Bucket {
         Ok(has_bucket)
     }
 
-    pub async fn create_bucket(&self) -> Result<()> {
+    pub async fn create_bucket(&self) -> Result<(), SyncError> {
         let mut req = self.client.create_bucket().bucket(&self.name);
 
         // Only set a location constraint for non-default regions. For us-east-1
@@ -71,7 +71,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn upload_object(&self, uuid: Uuid, file_path: &str) -> Result<()> {
+    pub async fn upload_object(&self, uuid: Uuid, file_path: &str) -> Result<(), SyncError> {
         let file = ByteStream::from_path(Path::new(file_path)).await?;
         self.client
             .put_object()
@@ -84,7 +84,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn object_exists(&self, key: Uuid) -> Result<bool> {
+    pub async fn object_exists(&self, key: Uuid) -> Result<bool, SyncError> {
         match self
             .client
             .head_object()
@@ -106,7 +106,7 @@ impl Bucket {
         }
     }
 
-    pub async fn delete_object(&self, key: Uuid) -> Result<()> {
+    pub async fn delete_object(&self, key: Uuid) -> Result<(), SyncError> {
         self.client
             .delete_object()
             .key(key)

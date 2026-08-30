@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::errors::SyncError;
 use std::env;
 
 pub struct Config {
@@ -11,7 +11,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Result<Self, SyncError> {
         Ok(Self {
             bucket_name: "test".to_string(),
             aws_endpoint: env::var("AWS_ENDPOINT_URL")?,

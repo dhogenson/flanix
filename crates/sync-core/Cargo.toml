@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-anyhow.workspace = true
 aws-config = { version = "1.10.1" }
 aws-sdk-s3 = {version = "1.141.0" }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "migrate", "chrono"] }
@@ -16,6 +15,7 @@ thiserror = "2.0.20"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+anyhow.workspace = true
 
 
 [lib]
