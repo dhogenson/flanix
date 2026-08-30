@@ -2,6 +2,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum DbError {
+    #[error("io error: {0}")]
+    IoError(#[from] std::io::Error),
     #[error("migrate error: {0}")]
     MigrateError(#[from] sqlx::migrate::MigrateError),
 

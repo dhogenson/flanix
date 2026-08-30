@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use sync_core::Commands;
+use sync_core::Sync;
 
 #[derive(Parser)]
 #[command(name = "myapp", about = "A sync program")]
@@ -24,7 +24,7 @@ enum Functions {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let functions = Commands::new().await?;
+    let functions = Sync::new().await?;
 
     match cli.command {
         Functions::Add { name } => functions.add(name).await?,

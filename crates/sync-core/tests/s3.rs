@@ -1,25 +1,20 @@
 use anyhow::Result;
 use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
 use sync_core::Bucket;
-use sync_core::Config;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
-pub async fn create_bucket() -> Result<Bucket> {
-    let config = Config::new()?;
-    let bucket = Bucket::new(
-        &config.bucket_name.to_string(),
-        &config.aws_default_region.to_string(),
-    )
-    .await;
-
-    Ok(bucket)
+fn unique_bucket_name() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("sync-test-{}-{}", std::process::id(), n)
 }
 
 // Also tests for the bucket exists function
 #[tokio::test]
 async fn test_create_bucket_with_bucket() -> Result<()> {
-    let bucket = Bucket::new("test", "us-west-2").await;
+    let bucket = Bucket::new(&unique_bucket_name(), "us-west-2").await;
     bucket.create_bucket().await?;
 
     assert!(bucket.bucket_exists().await?);
@@ -31,7 +26,7 @@ async fn test_create_bucket_with_bucket() -> Result<()> {
 // this code does not remove the bucket
 #[tokio::test]
 async fn test_create_bucket_without_bucket() -> Result<()> {
-    let bucket = create_bucket().await?;
+    let bucket = Bucket::new(&unique_bucket_name(), "us-west-2").await;
 
     assert!(!bucket.bucket_exists().await?);
 
@@ -40,7 +35,7 @@ async fn test_create_bucket_without_bucket() -> Result<()> {
 
 #[tokio::test]
 async fn test_upload_object() -> Result<()> {
-    let bucket = create_bucket().await?;
+    let bucket = Bucket::new(&unique_bucket_name(), "us-west-2").await;
 
     bucket.init().await?;
     let uuid = Uuid::new_v4();
