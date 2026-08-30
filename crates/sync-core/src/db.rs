@@ -1,6 +1,3 @@
-// TODO: sometimes a function just takes in a path to return something else, but
-// more than one folder can have a file name so make it also require a namespace to
-//
 use crate::errors::DbError;
 use chrono::{DateTime, TimeDelta, Utc};
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
@@ -18,6 +15,15 @@ pub struct File {
 
 pub struct Database {
     pub pool: Pool<Postgres>,
+}
+
+pub fn truncate_to_micros(t: DateTime<Utc>) -> DateTime<Utc> {
+    let sub_micro_ns = (t.timestamp_subsec_nanos() % 1000) as i64;
+    if sub_micro_ns == 0 {
+        t
+    } else {
+        t - TimeDelta::nanoseconds(sub_micro_ns)
+    }
 }
 
 impl Database {
@@ -137,7 +143,6 @@ impl Database {
         Ok(files)
     }
 
-    //TODO: rename this function
     pub async fn bucket_key_for_path(&self, namespace: &str, path: &str) -> Result<Uuid, DbError> {
         let namespace_id = self.get_namespace_id(namespace).await?;
 
@@ -150,17 +155,5 @@ impl Database {
         .await?;
 
         Ok(file)
-    }
-}
-
-/// Round a timestamp down to microsecond precision, matching the precision of
-/// the `files.modified_at` column. The filesystem reports nanoseconds, so this
-/// keeps stored values consistent with how `files_to_upload` compares them.
-fn truncate_to_micros(t: DateTime<Utc>) -> DateTime<Utc> {
-    let sub_micro_ns = (t.timestamp_subsec_nanos() % 1000) as i64;
-    if sub_micro_ns == 0 {
-        t
-    } else {
-        t - TimeDelta::nanoseconds(sub_micro_ns)
     }
 }

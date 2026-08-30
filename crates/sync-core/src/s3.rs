@@ -6,8 +6,6 @@ use aws_sdk_s3::{
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
 
-// TODO: figure out what local constatin is and fix it (used ai to fix it for now)
-
 const GLOBAL_REGION: &str = "us-east-1";
 
 use std::path::Path;
