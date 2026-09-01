@@ -1,7 +1,6 @@
 use crate::errors::DbError;
 use chrono::{DateTime, TimeDelta, Utc};
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
-use tokio::fs;
 use uuid::Uuid;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -48,17 +47,14 @@ impl Database {
         uuid: Uuid,
         bucket_key: Uuid,
         local_path: &str,
+        modified_at: DateTime<Utc>,
         namespace_id: Uuid,
     ) -> Result<(), DbError> {
-        let meta_data = fs::metadata(local_path).await?;
-        let modified_time: std::time::SystemTime = meta_data.modified()?;
-        let modified_time_utc: DateTime<Utc> = modified_time.into();
-
         // The filesystem gives nanosecond precision, but the DB column only
         // stores microseconds. Truncate explicitly (rather than relying on
         // Postgres to silently do it) so the stored value matches the precision
         // that `files_to_upload` compares against.
-        let modified_time_utc = truncate_to_micros(modified_time_utc);
+        let modified_at = truncate_to_micros(modified_at);
 
         sqlx::query(
             "INSERT INTO files (id, bucket_key, local_path, modified_at, namespace_id)
@@ -67,7 +63,7 @@ impl Database {
         .bind(uuid)
         .bind(bucket_key)
         .bind(local_path)
-        .bind(modified_time_utc)
+        .bind(modified_at)
         .bind(namespace_id)
         .execute(&self.pool)
         .await?;
@@ -143,7 +139,13 @@ impl Database {
         Ok(files)
     }
 
-    pub async fn bucket_key_for_path(&self, namespace: &str, path: &str) -> Result<Uuid, DbError> {
+    /// Returns the S3 key recorded for a file path, if the namespace has a
+    /// row for it.
+    pub async fn bucket_key_for_path_opt(
+        &self,
+        namespace: &str,
+        path: &str,
+    ) -> Result<Option<Uuid>, DbError> {
         let namespace_id = self.get_namespace_id(namespace).await?;
 
         let file = sqlx::query_scalar(
@@ -151,9 +153,72 @@ impl Database {
         )
         .bind(namespace_id)
         .bind(path)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
         Ok(file)
+    }
+
+    pub async fn bucket_key_for_path(&self, namespace: &str, path: &str) -> Result<Uuid, DbError> {
+        self.bucket_key_for_path_opt(namespace, path)
+            .await?
+            .ok_or_else(|| {
+                DbError::NotFound(format!(
+                    "no file '{}' tracked in namespace '{}'",
+                    path, namespace
+                ))
+            })
+    }
+
+    /// Returns the cloud-side modification time recorded for a file path,
+    /// i.e. the mtime of the object as it sits in the bucket.
+    pub async fn modified_at_for_path(
+        &self,
+        namespace: &str,
+        path: &str,
+    ) -> Result<DateTime<Utc>, DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        let modified_at = sqlx::query_scalar(
+            "SELECT modified_at FROM files WHERE namespace_id = $1 AND local_path = $2",
+        )
+        .bind(namespace_id)
+        .bind(path)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            DbError::NotFound(format!(
+                "no file '{}' tracked in namespace '{}'",
+                path, namespace
+            ))
+        })?;
+
+        Ok(modified_at)
+    }
+
+    /// Updates the modified time recorded for an existing file row, e.g.
+    /// after the file was re-uploaded or downloaded.
+    pub async fn update_file_modified_at(
+        &self,
+        namespace: &str,
+        local_path: &str,
+        modified_at: DateTime<Utc>,
+    ) -> Result<(), DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        // Truncate like add_file does so the stored value always matches the
+        // precision the comparison functions use.
+        let modified_at = truncate_to_micros(modified_at);
+
+        sqlx::query(
+            "UPDATE files SET modified_at = $1 WHERE namespace_id = $2 AND local_path = $3",
+        )
+        .bind(modified_at)
+        .bind(namespace_id)
+        .bind(local_path)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use sync_core::Database;
 use uuid::Uuid;
@@ -21,18 +22,25 @@ async fn test_insert_record(pool: PgPool) -> Result<()> {
 async fn test_add_file(pool: PgPool) -> Result<()> {
     let database = Database::from_pool(pool.clone()).await;
 
-    // add_file reads the file's modified time from disk, so the path must exist.
+    // add_file now takes the modified time as an argument; the DB layer no
+    // longer reads the file from disk.
     let dir = tempfile::tempdir()?;
     let local_path = dir.path().join("test.txt");
     tokio::fs::write(&local_path, "test content").await?;
-    let local_path = local_path.to_string_lossy().into_owned();
+    let modified_at: DateTime<Utc> = tokio::fs::metadata(&local_path).await?.modified()?.into();
 
     let uuid = Uuid::new_v4();
     let bucket_key = Uuid::new_v4();
     let namespace_id = Uuid::new_v4();
 
     database
-        .add_file(uuid, bucket_key, &local_path, namespace_id)
+        .add_file(
+            uuid,
+            bucket_key,
+            &local_path.to_string_lossy(),
+            modified_at,
+            namespace_id,
+        )
         .await?;
 
     let row = sqlx::query!("SELECT id FROM files WHERE id = $1", uuid)

@@ -5,6 +5,7 @@ use aws_sdk_s3::{
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
+use tokio::io::AsyncWriteExt;
 
 const GLOBAL_REGION: &str = "us-east-1";
 
@@ -111,6 +112,23 @@ impl Bucket {
             .bucket(&self.name)
             .send()
             .await?;
+
+        Ok(())
+    }
+
+    pub async fn download_object(&self, key: Uuid, path: &str) -> Result<(), SyncError> {
+        let response = self
+            .client
+            .get_object()
+            .bucket(&self.name)
+            .key(key)
+            .send()
+            .await?;
+
+        let data = response.body.collect().await?.into_bytes();
+        let mut file = tokio::fs::File::create(path).await?;
+        file.write_all(&data).await?;
+        file.sync_all().await?;
 
         Ok(())
     }
