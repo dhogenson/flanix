@@ -33,7 +33,7 @@ impl Database {
     }
 
     pub async fn from_pool(pool: Pool<Postgres>) -> Self {
-        Self { pool: pool }
+        Self { pool }
     }
 
     pub async fn init(&mut self) -> Result<(), DbError> {
@@ -139,8 +139,6 @@ impl Database {
         Ok(files)
     }
 
-    /// Returns the S3 key recorded for a file path, if the namespace has a
-    /// row for it.
     pub async fn bucket_key_for_path_opt(
         &self,
         namespace: &str,
@@ -196,8 +194,6 @@ impl Database {
         Ok(modified_at)
     }
 
-    /// Updates the modified time recorded for an existing file row, e.g.
-    /// after the file was re-uploaded or downloaded.
     pub async fn update_file_modified_at(
         &self,
         namespace: &str,
@@ -206,8 +202,6 @@ impl Database {
     ) -> Result<(), DbError> {
         let namespace_id = self.get_namespace_id(namespace).await?;
 
-        // Truncate like add_file does so the stored value always matches the
-        // precision the comparison functions use.
         let modified_at = truncate_to_micros(modified_at);
 
         sqlx::query(

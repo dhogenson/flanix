@@ -11,7 +11,11 @@ use tempfile::TempDir;
 async fn test_sync(pool: PgPool) -> Sync {
     let database = Database::from_pool(pool).await;
     let bucket = Bucket::new("test-bucket", "us-west-2").await;
-    Sync { database, bucket }
+    Sync {
+        database,
+        bucket,
+        config: Config::new().unwrap(),
+    }
 }
 
 async fn create_namespace(db: &Database, name: &str) -> Uuid {

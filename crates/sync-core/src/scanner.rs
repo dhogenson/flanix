@@ -28,8 +28,6 @@ fn normalize(path: &Path) -> PathBuf {
 }
 
 pub fn scan_files(path: PathBuf) -> Result<Vec<File>, SyncError> {
-    // Normalize the base before globbing so a leading `./` (or one embedded
-    // in the middle of the path) doesn't break the relative-path strip below.
     let base = normalize(&path);
 
     let mut files: Vec<File> = Vec::new();

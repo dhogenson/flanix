@@ -39,6 +39,12 @@ pub enum SyncError {
 
     #[error("glob error: {0}")]
     Glob(#[from] glob::PatternError),
+
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("namespace not found: {0}")]
+    NamespaceNotFound(String),
 }
 
 // The AWS SDK generates `From<SdkError<OperationError, R>> for Error` for each

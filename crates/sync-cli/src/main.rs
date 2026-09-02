@@ -14,22 +14,22 @@ struct Cli {
 #[derive(Subcommand)]
 enum Functions {
     /// Add a new sync namespace
-    Add { name: String },
+    Add { name: String, path: String },
     /// Push a namespace
-    Push { namespace: String, path: String },
+    Push { namespace: String },
     /// Pull a namespace
-    Pull { namespace: String, path: String },
+    Pull { namespace: String },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let functions = Sync::new().await?;
+    let mut functions = Sync::new().await?;
 
     let result = match cli.command {
-        Functions::Add { name } => functions.add(name).await,
-        Functions::Push { namespace, path } => functions.push(namespace, path).await,
-        Functions::Pull { namespace, path } => functions.pull(namespace, path).await,
+        Functions::Add { name, path } => functions.add(name, path).await,
+        Functions::Push { namespace } => functions.push(namespace).await,
+        Functions::Pull { namespace } => functions.pull(namespace).await,
     };
 
     if let Err(e) = result {

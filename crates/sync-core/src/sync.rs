@@ -22,6 +22,7 @@ use uuid::Uuid;
 pub struct Sync {
     database: Database,
     bucket: Bucket,
+    config: Config,
 }
 
 impl Sync {
@@ -32,14 +33,28 @@ impl Sync {
         database.init().await?;
         bucket.init().await?;
         Ok(Self {
-            database: database,
-            bucket: bucket,
+            database,
+            bucket,
+            config,
         })
     }
 
     /// Uploads new and changed files to the cloud
-    pub async fn push(&self, namespace: String, path: String) -> Result<(), SyncError> {
+    pub async fn push(&self, namespace: String) -> Result<(), SyncError> {
         let namespace_id = self.database.get_namespace_id(&namespace).await?;
+
+        let path = match self.config.find_namespace_path(&namespace.to_string()) {
+            Some(path) => path,
+            None => {
+                return Err(SyncError::NamespaceNotFound(
+                    format!("namespace: {}", namespace).into(),
+                ));
+            }
+        };
+
+        // if let Some(path) =  {}
+
+        // let path = &self.config.namespaces[0].path;
 
         let files = self
             .files_to_upload(&namespace, PathBuf::from(&path))
@@ -54,10 +69,6 @@ impl Sync {
             // the folder back on to read the actual file from disk.
             let full_path = PathBuf::from(&path).join(&file.path);
 
-            // A re-uploaded file already has a DB row and an object in the
-            // bucket: overwrite the existing object and update the row's mtime
-            // in place. Inserting a fresh row would leave a duplicate DB row
-            // behind and orphan the old object.
             if let Some(bucket_key) = self
                 .database
                 .bucket_key_for_path_opt(&namespace, &file.path.to_string_lossy())
@@ -106,31 +117,29 @@ impl Sync {
         Ok(())
     }
 
-    /// Downloads files that are newer on the cloud (or missing locally) and
-    /// removes local files that no longer exist in the cloud.
-    pub async fn pull(&self, namespace: String, path: String) -> Result<(), SyncError> {
+    pub async fn pull(&self, namespace: String) -> Result<(), SyncError> {
+        let path = match self.config.find_namespace_path(&namespace.to_string()) {
+            Some(path) => path,
+            None => {
+                return Err(SyncError::NamespaceNotFound(
+                    format!("namespace: {}", namespace).into(),
+                ));
+            }
+        };
+
         let root = PathBuf::from(&path);
 
-        // First, check for files that are newer on the cloud.
+        // first check for files that are newer on the cloud
         let files_to_download = self.files_to_pull(&namespace, root.clone()).await?;
 
         for file in files_to_download {
             let path_str = file.to_string_lossy().to_string();
 
-            // Download the object the DB already tracks for this path, not a
-            // freshly generated key.
             let bucket_key = self
                 .database
                 .bucket_key_for_path(&namespace, &path_str)
                 .await?;
 
-            // The mtime the cloud copy is recorded with. After the download,
-            // restore it onto the local file (rsync-style) so the local copy
-            // is indistinguishable from the cloud copy. Recording the download
-            // time instead made the cloud copy look "newer" than every other
-            // local copy of the same content, so any later pull into a folder
-            // holding older copies re-downloaded every file even though
-            // nothing had changed.
             let modified_at = self
                 .database
                 .modified_at_for_path(&namespace, &path_str)
@@ -138,9 +147,6 @@ impl Sync {
 
             let full_path = root.join(&file);
 
-            // `File::create` won't make parent directories, so a nested
-            // cloud file (e.g. "folder/hello.txt") fails to download into a
-            // fresh pull root unless the directory exists first.
             if let Some(parent) = full_path.parent() {
                 tokio::fs::create_dir_all(parent).await?;
             }
@@ -149,15 +155,9 @@ impl Sync {
                 .download_object(bucket_key, &full_path.to_string_lossy())
                 .await?;
 
-            // Put the cloud copy's mtime back onto the downloaded file so a
-            // later push or pull treats it as identical to the cloud copy
-            // rather than as a brand-new local change.
             std::fs::File::open(&full_path)?.set_modified(modified_at.into())?;
         }
 
-        // Next, check if files need deleted: local files that no longer exist
-        // in the cloud get removed (the mirror of push, which deletes cloud
-        // files that no longer exist locally).
         let files_to_delete = self.files_to_delete_local(&namespace, root.clone()).await?;
 
         for file in files_to_delete {
@@ -167,12 +167,15 @@ impl Sync {
         Ok(())
     }
 
-    pub async fn add(&self, name: String) -> Result<(), SyncError> {
-        if !self.database.namespace_exists(&name.to_string()).await? {
+    pub async fn add(&mut self, name: String, path: String) -> Result<(), SyncError> {
+        let path = fs::canonicalize(&path)?.to_string_lossy().to_string();
+
+        if !self.config.contains_namespace(&name) {
+            self.config.create_namespace(&name, path)?;
+        }
+        if !self.database.namespace_exists(&name).await? {
             let uuid = Uuid::new_v4();
-            self.database
-                .create_namespace(uuid, &name.to_string())
-                .await?;
+            self.database.create_namespace(uuid, &name).await?;
         }
         Ok(())
     }
@@ -229,9 +232,6 @@ impl Sync {
         Ok(to_delete)
     }
 
-    /// Returns the (namespace-relative) paths that need to be downloaded:
-    /// files tracked in the cloud that are missing locally, or whose cloud
-    /// copy is newer than the local copy.
     async fn files_to_pull(
         &self,
         namespace: &str,
@@ -265,8 +265,6 @@ impl Sync {
         Ok(to_download)
     }
 
-    /// Returns the (namespace-relative) local paths that exist on disk but
-    /// are not tracked in the cloud, i.e. the files a pull should delete.
     async fn files_to_delete_local(
         &self,
         namespace: &str,
