@@ -1,0 +1,15 @@
+[package]
+name = "sync-errors"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+aws-sdk-s3.workspace = true
+sqlx.workspace = true
+glob.workspace = true
+serde_json.workspace = true
+
+[lib]
+name = "sync_errors"
+path = "src/lib.rs"

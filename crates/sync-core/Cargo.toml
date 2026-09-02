@@ -4,18 +4,23 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+
+sync-config = { path = "../sync-config" }
 aws-config = { version = "1.10.1" }
-aws-sdk-s3 = {version = "1.141.0" }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "migrate", "chrono"] }
+# aws-sdk-s3 = {version = "1.141.0" }
+
 chrono = {version = "0.4.45", features = ["serde"]}
 tokio.workspace = true
 uuid.workspace = true
 glob = "0.3.4"
-thiserror = "2.0.20"
-directories = "6.0.0"
-serde = "1.0.229"
-serde_json = "1.0.151"
-dotenvy = "0.15.7"
+thiserror.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+
+aws-sdk-s3.workspace = true
+sqlx.workspace = true
+sync-errors = { path = "../sync-errors" }
 
 [dev-dependencies]
 tempfile = "3.27.0"

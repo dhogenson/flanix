@@ -2803,6 +2803,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sync-config"
+version = "0.1.0"
+dependencies = [
+ "directories",
+ "dotenvy",
+ "serde",
+ "serde_json",
+ "sync-errors",
+]
+
+[[package]]
 name = "sync-core"
 version = "0.1.0"
 dependencies = [
@@ -2810,16 +2821,27 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "chrono",
- "directories",
- "dotenvy",
  "glob",
  "serde",
  "serde_json",
  "sqlx",
+ "sync-config",
+ "sync-errors",
  "tempfile",
  "thiserror",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "sync-errors"
+version = "0.1.0"
+dependencies = [
+ "aws-sdk-s3",
+ "glob",
+ "serde_json",
+ "sqlx",
+ "thiserror",
 ]
 
 [[package]]

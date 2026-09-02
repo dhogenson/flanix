@@ -1,0 +1,15 @@
+[package]
+name = "sync-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+sync-errors = { path = "../sync-errors" }
+directories = "6.0.0"
+serde.workspace = true
+serde_json.workspace = true
+dotenvy = "0.15.7"
+
+[lib]
+name = "sync_config"
+path = "src/lib.rs"
