@@ -84,8 +84,9 @@ async fn skips_untouched_file_after_previous_upload(pool: PgPool) -> Result<()> 
     // to microsecond precision (not ceil'ed). This is what actually happens.
     insert_cloud_file(&sync.database, "a.txt", truncate_to_micros(mtime), ns_id).await;
 
+    let local_files = scan_files(dir.path().to_path_buf())?;
     let to_upload = sync
-        .files_to_upload("ns-reupload", dir.path().to_path_buf())
+        .files_to_upload("ns-reupload", &local_files)
         .await?;
 
     // Even though local ns mtime is strictly greater than the stored cloud
@@ -103,8 +104,9 @@ async fn selects_files_not_in_cloud(pool: PgPool) -> Result<()> {
 
     create_namespace(&sync.database, "ns-new").await;
 
+    let local_files = scan_files(dir.path().to_path_buf())?;
     let to_upload: Vec<PathBuf> = sync
-        .files_to_upload("ns-new", dir.path().to_path_buf())
+        .files_to_upload("ns-new", &local_files)
         .await?
         .into_iter()
         .map(|f| f.path)
@@ -130,8 +132,9 @@ async fn skips_files_up_to_date(pool: PgPool) -> Result<()> {
     // Cloud copy is not older than the local file -> up to date, skip.
     insert_cloud_file(&sync.database, "a.txt", ceil_to_db_precision(mtime), ns_id).await;
 
+    let local_files = scan_files(dir.path().to_path_buf())?;
     let to_upload = sync
-        .files_to_upload("ns-skip", dir.path().to_path_buf())
+        .files_to_upload("ns-skip", &local_files)
         .await?;
 
     assert!(to_upload.is_empty());
@@ -149,8 +152,9 @@ async fn skips_when_cloud_copy_is_newer(pool: PgPool) -> Result<()> {
     // Cloud copy was modified after the local file -> no re-upload.
     insert_cloud_file(&sync.database, "a.txt", mtime + TimeDelta::hours(1), ns_id).await;
 
+    let local_files = scan_files(dir.path().to_path_buf())?;
     let to_upload = sync
-        .files_to_upload("ns-cloud-newer", dir.path().to_path_buf())
+        .files_to_upload("ns-cloud-newer", &local_files)
         .await?;
 
     assert!(to_upload.is_empty());
@@ -168,8 +172,9 @@ async fn selects_when_local_copy_is_newer(pool: PgPool) -> Result<()> {
     // Cloud copy is older than the local file -> re-upload.
     insert_cloud_file(&sync.database, "a.txt", mtime - TimeDelta::hours(1), ns_id).await;
 
+    let local_files = scan_files(dir.path().to_path_buf())?;
     let to_upload: Vec<PathBuf> = sync
-        .files_to_upload("ns-local-newer", dir.path().to_path_buf())
+        .files_to_upload("ns-local-newer", &local_files)
         .await?
         .into_iter()
         .map(|f| f.path)
@@ -211,8 +216,9 @@ async fn mixes_upload_and_skip_decisions(pool: PgPool) -> Result<()> {
     )
     .await;
 
+    let local_files = scan_files(dir.path().to_path_buf())?;
     let to_upload: Vec<PathBuf> = sync
-        .files_to_upload("ns-mixed", dir.path().to_path_buf())
+        .files_to_upload("ns-mixed", &local_files)
         .await?
         .into_iter()
         .map(|f| f.path)

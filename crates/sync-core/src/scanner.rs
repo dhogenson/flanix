@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct File {
     pub path: PathBuf,
     pub modified: DateTime<Utc>,

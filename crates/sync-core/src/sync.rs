@@ -52,16 +52,14 @@ impl Sync {
             }
         };
 
-        // if let Some(path) =  {}
-
-        // let path = &self.config.namespaces[0].path;
+        let local_files = scan_files(PathBuf::from(&path))?;
 
         let files = self
-            .files_to_upload(&namespace, PathBuf::from(&path))
+            .files_to_upload(&namespace, &local_files)
             .await?;
 
         let files_to_delete = self
-            .files_to_delete(&namespace, PathBuf::from(&path))
+            .files_to_delete(&namespace, &local_files)
             .await?;
 
         for file in files {
@@ -183,9 +181,8 @@ impl Sync {
     async fn files_to_upload(
         &self,
         namespace: &str,
-        path: PathBuf,
+        local_files: &[File],
     ) -> Result<Vec<File>, SyncError> {
-        let local_files = scan_files(path)?;
         let cloud_files = self.database.get_files(namespace).await?;
 
         // Turn the cloud files into a index, where the key is the PathBuf and the value is the date time
@@ -202,9 +199,9 @@ impl Sync {
 
             match cloud_index.get(&local_file.path) {
                 // not in cloud at all — needs uploading
-                None => to_upload.push(local_file),
+                None => to_upload.push(local_file.clone()),
                 // in cloud, but local file is newer — needs re-uploading
-                Some(cloud_mtime) if local_mtime > *cloud_mtime => to_upload.push(local_file),
+                Some(cloud_mtime) if local_mtime > *cloud_mtime => to_upload.push(local_file.clone()),
                 _ => {}
             }
         }
@@ -215,16 +212,15 @@ impl Sync {
     async fn files_to_delete(
         &self,
         namespace: &str,
-        path: PathBuf,
+        local_files: &[File],
     ) -> Result<Vec<PathBuf>, SyncError> {
-        let local_files: Vec<PathBuf> = scan_files(path)?.into_iter().map(|f| f.path).collect();
         let cloud_files = self.database.get_files(namespace).await?;
 
         let mut to_delete: Vec<PathBuf> = Vec::new();
 
         for cloud_file in cloud_files {
             let cloud_path = PathBuf::from(&cloud_file.local_path);
-            if !local_files.contains(&cloud_path) {
+            if !local_files.iter().any(|f| f.path == cloud_path) {
                 to_delete.push(cloud_path);
             }
         }

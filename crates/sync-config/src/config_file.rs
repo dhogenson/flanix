@@ -48,10 +48,12 @@ impl Config {
 
 fn get_config_file() -> Result<PathBuf, SyncError> {
     let mut config_folder: PathBuf = PathBuf::new();
-    fs::create_dir_all(&config_folder)?;
+
     if let Some(project_dirs) = ProjectDirs::from("dev", "hogenson", "sync") {
         config_folder = PathBuf::from(project_dirs.config_dir())
     }
+
+    fs::create_dir_all(&config_folder)?;
 
     let config_file = config_folder.join(PathBuf::from("config.json"));
 
@@ -59,15 +61,7 @@ fn get_config_file() -> Result<PathBuf, SyncError> {
 }
 
 pub fn load_namespaces() -> Result<Vec<Namespace>, SyncError> {
-    let mut config_folder: PathBuf = PathBuf::new();
-
-    if let Some(project_dirs) = ProjectDirs::from("dev", "hogenson", "sync") {
-        config_folder = PathBuf::from(project_dirs.config_dir())
-    }
-
-    fs::create_dir_all(&config_folder)?;
-
-    let config_file = config_folder.join(PathBuf::from("config.json"));
+    let config_file = get_config_file()?;
 
     let file = match File::open(&config_file) {
         Ok(file) => file,

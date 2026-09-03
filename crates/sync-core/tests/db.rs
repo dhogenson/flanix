@@ -33,6 +33,8 @@ async fn test_add_file(pool: PgPool) -> Result<()> {
     let bucket_key = Uuid::new_v4();
     let namespace_id = Uuid::new_v4();
 
+    database.create_namespace(namespace_id, "test").await?;
+
     database
         .add_file(
             uuid,
