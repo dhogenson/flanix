@@ -22,6 +22,7 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/`.
 - [ ] **Bucket state not consulted** — cloud state is really just "what the DB thinks is in the cloud." If an object is deleted from S3 but the DB row still exists, it's treated as up-to-date and skipped. The bucket should actually be consulted. *(Still open: `push`/`pull` only ever read from the DB; S3 contents are never queried during sync.)*
 - [ ] **Partial sync on failure** — if push or pull fails mid-loop, you end up in a partially-synced state. Handle this gracefully (e.g., atomic commits / rollback). *(Still open: `push`/`pull` use `?` and don't roll back partial writes/deletes.)*
 - [ ] **Large file downloads** — `download_object` reads everything into memory; stream to disk instead for large files. *(Still open: `s3.rs` line 128 does `response.body.collect().await?.into_bytes()` before writing to disk.)*
+- [ ] Figure out how to store the database values that i keep calling over and over again
 
 ---
 
@@ -34,7 +35,7 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/`.
 
 ## Build / Platform
 
-- [ ] **Windows build** — resolve linking errors when building on Windows. Reference command:
+- [x] **Windows build** — resolve linking errors when building on Windows. Reference command:
   - Install the tooling: `cargo install cargo-xwin`
   - Build: `cargo xwin build --release --target x86_64-pc-windows-msvc`
   - (Requires adding LLVM/Clang dependencies.)

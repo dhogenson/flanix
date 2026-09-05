@@ -1,7 +1,12 @@
+mod verify_inputs;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::fs;
 use sync_core::Sync;
+use verify_inputs::validate_namespace;
+
+use crate::verify_inputs::validate_path;
 
 #[derive(Parser)]
 #[command(name = "Sync", about = "A sync program")]
@@ -14,29 +19,40 @@ struct Cli {
 #[derive(Subcommand)]
 enum Functions {
     /// Add a new sync namespace
-    Add { name: String, path: String },
+    Add {
+        #[arg(value_parser = validate_namespace)]
+        namespace: String,
+        #[arg(value_parser = validate_path)]
+        path: String,
+    },
     /// Push a namespace
-    Push { namespace: String },
+    Push {
+        #[arg(value_parser = validate_namespace)]
+        namespace: String,
+    },
     /// Pull a namespace
-    Pull { namespace: String },
+    Pull {
+        #[arg(value_parser = validate_namespace)]
+        namespace: String,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let mut functions = Sync::new().await?;
+    let mut sync = Sync::new().await?;
 
     // verify paths and expand them etc
 
     let result = match cli.command {
-        Functions::Add { name, path } => {
+        Functions::Add { namespace, path } => {
             let path = fs::canonicalize(path)?;
-            functions
-                .add(name, path.to_string_lossy().to_string())
+            sync.add(namespace, path.to_string_lossy().to_string())
                 .await
         }
-        Functions::Push { namespace } => functions.push(namespace).await,
-        Functions::Pull { namespace } => functions.pull(namespace).await,
+        // The push function already verifies the namespace
+        Functions::Push { namespace } => sync.push(namespace).await,
+        Functions::Pull { namespace } => sync.pull(namespace).await,
     };
 
     if let Err(e) = result {
