@@ -9,6 +9,8 @@ aws-sdk-s3.workspace = true
 sqlx.workspace = true
 glob.workspace = true
 serde_json.workspace = true
+toml.workspace = true
+
 
 [lib]
 name = "sync_errors"

@@ -43,8 +43,17 @@ pub enum SyncError {
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("toml read error: {0}")]
+    TomlRead(#[from] toml::de::Error),
+
+    #[error("toml write error: {0}")]
+    TomlWrite(#[from] toml::ser::Error),
+
     #[error("namespace not found: {0}")]
     NamespaceNotFound(String),
+
+    #[error("config directory not found: {0}")]
+    ConfigDirNotFound(String),
 }
 
 // The AWS SDK generates `From<SdkError<OperationError, R>> for Error` for each

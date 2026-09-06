@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 pub fn validate_namespace(namespace: &str) -> Result<String, String> {
     let trimmed = namespace.trim();
     if trimmed.is_empty() {
@@ -13,13 +11,13 @@ pub fn validate_namespace(namespace: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
-pub fn validate_path(s: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(s);
+pub fn validate_path(s: &str) -> Result<String, String> {
+    let path = std::path::PathBuf::from(s);
     if !path.exists() {
         return Err(format!("path does not exist: {}", s));
     }
     if !path.is_dir() {
         return Err(format!("path is not a directory: {}", s));
     }
-    Ok(path)
+    Ok(s.to_string())
 }

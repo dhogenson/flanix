@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use sync_core::Bucket;
+use sync_config::Config;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
@@ -11,10 +12,17 @@ fn unique_bucket_name() -> String {
     format!("sync-test-{}-{}", std::process::id(), n)
 }
 
+fn test_config(bucket_name: String) -> Config {
+    let mut config = Config::default();
+    config.bucket_name = bucket_name;
+    config.aws_default_region = "us-west-2".to_string();
+    config
+}
+
 // Also tests for the bucket exists function
 #[tokio::test]
 async fn test_create_bucket_with_bucket() -> Result<()> {
-    let bucket = Bucket::new(&unique_bucket_name(), "us-west-2").await;
+    let bucket = Bucket::new(&test_config(unique_bucket_name())).await;
     bucket.create_bucket().await?;
 
     assert!(bucket.bucket_exists().await?);
@@ -26,7 +34,7 @@ async fn test_create_bucket_with_bucket() -> Result<()> {
 // this code does not remove the bucket
 #[tokio::test]
 async fn test_create_bucket_without_bucket() -> Result<()> {
-    let bucket = Bucket::new(&unique_bucket_name(), "us-west-2").await;
+    let bucket = Bucket::new(&test_config(unique_bucket_name())).await;
 
     assert!(!bucket.bucket_exists().await?);
 
@@ -35,7 +43,7 @@ async fn test_create_bucket_without_bucket() -> Result<()> {
 
 #[tokio::test]
 async fn test_upload_object() -> Result<()> {
-    let bucket = Bucket::new(&unique_bucket_name(), "us-west-2").await;
+    let bucket = Bucket::new(&test_config(unique_bucket_name())).await;
 
     bucket.init().await?;
     let uuid = Uuid::new_v4();

@@ -1,17 +1,17 @@
-use crate::Config;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use sync_errors::SyncError;
 
 use std::{
     fs::{self, File},
-    io::{BufReader, BufWriter},
+    io::{BufWriter, Write},
     path::PathBuf,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct ConfigFile {
-    namespaces: Vec<Namespace>,
+pub struct Namespace {
+    pub namespace: String,
+    pub path: String,
 }
 
 impl Namespace {
@@ -21,62 +21,84 @@ impl Namespace {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Namespace {
-    pub namespace: String,
-    pub path: String,
+#[serde(default)]
+pub struct Config {
+    // config_path: PathBuf,
+    pub bucket_name: String,
+    pub aws_endpoint: String,
+    pub aws_default_region: String,
+    pub aws_access_key_id: String,
+    pub aws_secret_access_key: String,
+    pub database_url: String,
+    pub namespaces: Vec<Namespace>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            bucket_name: "test".to_string(),
+            aws_endpoint: "http://localhost:4566".to_string(),
+            aws_default_region: "us-east-1".to_string(),
+            aws_access_key_id: "test".to_string(),
+            aws_secret_access_key: "test".to_string(),
+            database_url: "postgres://user:password@localhost/mydb".to_string(),
+            namespaces: Vec::new(),
+        }
+    }
 }
 
 impl Config {
+    pub fn new() -> Result<Self, SyncError> {
+        let path = Self::get_config_file()?;
+
+        let content = fs::read_to_string(path)?;
+
+        let config: Config = toml::from_str(&content)?;
+
+        Ok(config)
+    }
+
+    pub fn find_namespace_path(&self, namespace: &str) -> Option<PathBuf> {
+        let namespace_path = self.namespaces.iter().find(|n| n.namespace == namespace)?;
+        Some(PathBuf::from(&namespace_path.path))
+    }
+
+    pub fn contains_namespace(&self, namespace: &str) -> bool {
+        self.namespaces.iter().any(|n| n.namespace == namespace)
+    }
+
     pub fn create_namespace(&mut self, namespace: &str, path: String) -> Result<(), SyncError> {
         self.namespaces
             .push(Namespace::new(namespace.to_string(), path));
 
-        let config_file = get_config_file()?;
+        let toml_string = toml::to_string_pretty(self)?;
+        let config_file = Self::get_config_file()?;
         let file = File::create(config_file)?;
-        let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(
-            writer,
-            &ConfigFile {
-                namespaces: self.namespaces.clone(),
-            },
-        )?;
+        let mut writer = BufWriter::new(file);
+
+        write!(writer, "{}", toml_string)?;
 
         Ok(())
-        // todo!()
-    }
-}
-
-fn get_config_file() -> Result<PathBuf, SyncError> {
-    let mut config_folder: PathBuf = PathBuf::new();
-
-    if let Some(project_dirs) = ProjectDirs::from("dev", "hogenson", "sync") {
-        config_folder = PathBuf::from(project_dirs.config_dir())
     }
 
-    fs::create_dir_all(&config_folder)?;
+    fn get_config_file() -> Result<PathBuf, SyncError> {
+        let config_folder = match ProjectDirs::from("dev", "hogenson", "sync") {
+            Some(project_dirs) => PathBuf::from(project_dirs.config_dir()),
+            None => {
+                return Err(SyncError::ConfigDirNotFound(
+                    "unable to determine config directory for this platform".into(),
+                ));
+            }
+        };
 
-    let config_file = config_folder.join(PathBuf::from("config.json"));
+        fs::create_dir_all(&config_folder)?;
 
-    Ok(config_file)
-}
+        let config_file = config_folder.join(PathBuf::from("config.toml"));
 
-pub fn load_namespaces() -> Result<Vec<Namespace>, SyncError> {
-    let config_file = get_config_file()?;
-
-    let file = match File::open(&config_file) {
-        Ok(file) => file,
-        Err(_) => {
+        if !config_file.exists() {
             File::create(&config_file)?;
-            return Ok(Vec::new());
         }
-    };
 
-    let reader = BufReader::new(file);
-
-    let config_data: ConfigFile = match serde_json::from_reader(reader) {
-        Ok(data) => data,
-        Err(_) => return Ok(Vec::new()),
-    };
-
-    Ok(config_data.namespaces)
+        Ok(config_file)
+    }
 }

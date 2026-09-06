@@ -7,11 +7,13 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/`.
 ## In Progress / New Ideas
 
 - [ ] **Readable IO errors** — when an error says a file doesn't exist, tell the user *which* file it's talking about. *(Still open: `scanner.rs` line 65 just does `eprintln!("Error: {}", error)` with no filename; generic IO errors aren't wrapped with context.)*
-- [ ] **TOML config** — save/load configuration as a TOML file instead of the current format. *(Still open: `config_file.rs` still reads/writes `config.json` via serde_json.)*
+- [x] **TOML config** — save/load configuration as a TOML file instead of the current format. *(Still open: `config_file.rs` still reads/writes `config.json` via serde_json.)*
+- [ ] **Config keyed by namespace name** — represent namespaces as a `BTreeMap<String, String>` so each `[[namespaces]]` table becomes `[namespaces.<name>]` with just a `path` field, avoiding the duplicated `namespace` key. *(Still open: `config_file.rs` uses `Vec<Namespace>` with redundant `namespace`/`path` pairs.)*
 - [ ] **`--dry-run` flag for pull** — preview changes before pulling, since pull deletes local files. *(Still open: no such flag exists in the CLI.)*
 - [ ] **Non-full-screen TUI** — build a non-fullscreen terminal UI to edit the config. *(Still open: no TUI exists anywhere in the codebase.)*
 - [ ] **Secrets management** — use `aws-sdk-secretsmanager` (or similar) for AWS and DB credentials instead of env vars. *(Still open: `Config::new()` in `sync-config/src/lib.rs` reads all secrets straight from environment variables.)*
-- [ ] **Input validation** — figure out how to verify inputs; currently done rarely. *(Still open: `main.rs` line 29 has a placeholder comment "verify paths and expand them etc" but no implementation.)*
+- [x] **Input validation** — figure out how to verify inputs; currently done rarely. *(Still open: `main.rs` line 29 has a placeholder comment "verify paths and expand them etc" but no implementation.)*
+- [ ] Create different errors for each crate
 
 ---
 

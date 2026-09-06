@@ -29,7 +29,7 @@ impl Sync {
     pub async fn new() -> Result<Self, SyncError> {
         let config = Config::new()?;
         let mut database = Database::new(&config.database_url).await?;
-        let bucket = Bucket::new(&config.bucket_name, &config.aws_default_region).await;
+        let bucket = Bucket::new(&config).await;
         database.init().await?;
         bucket.init().await?;
         Ok(Self {

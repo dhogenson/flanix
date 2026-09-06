@@ -10,7 +10,10 @@ use tempfile::TempDir;
 // satisfy the struct's fields.
 async fn test_sync(pool: PgPool) -> Sync {
     let database = Database::from_pool(pool).await;
-    let bucket = Bucket::new("test-bucket", "us-west-2").await;
+    let mut bucket_config = Config::new().unwrap();
+    bucket_config.bucket_name = "test-bucket".to_string();
+    bucket_config.aws_default_region = "us-west-2".to_string();
+    let bucket = Bucket::new(&bucket_config).await;
     Sync {
         database,
         bucket,

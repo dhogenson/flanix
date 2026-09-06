@@ -5,6 +5,7 @@ use aws_sdk_s3::{
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
+use sync_config::Config;
 use tokio::io::AsyncWriteExt;
 
 const GLOBAL_REGION: &str = "us-east-1";
@@ -19,12 +20,29 @@ pub struct Bucket {
 }
 
 impl Bucket {
-    pub async fn new(name: &str, location: &str) -> Self {
-        let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    pub async fn new(config: &Config) -> Self {
+        let mut sdk_config = aws_config::defaults(BehaviorVersion::latest())
+            .region(aws_config::Region::new(config.aws_default_region.clone()))
+            .endpoint_url(&config.aws_endpoint);
+
+        // Only set credentials if they're non-empty (avoids overriding IAM roles)
+        if !config.aws_access_key_id.is_empty() && !config.aws_secret_access_key.is_empty() {
+            sdk_config = sdk_config.credentials_provider(
+                aws_sdk_s3::config::Credentials::new(
+                    config.aws_access_key_id.clone(),
+                    config.aws_secret_access_key.clone(),
+                    None,
+                    None,
+                    "sync-config",
+                ),
+            );
+        }
+
+        let sdk_config = sdk_config.load().await;
         Self {
-            name: name.to_string(),
-            location: location.to_string(),
-            client: Client::new(&config),
+            name: config.bucket_name.clone(),
+            location: config.aws_default_region.clone(),
+            client: Client::new(&sdk_config),
         }
     }
 
