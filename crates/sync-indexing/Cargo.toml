@@ -1,0 +1,15 @@
+[package]
+name = "sync-indexing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+# redb = "4.2.0"
+walkdir = "2.5.0"
+chrono.workspace = true
+blake3.workspace = true
+
+[lib]
+name = "sync_indexing"
+path = "src/lib.rs"

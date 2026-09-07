@@ -5,6 +5,11 @@ use sqlx::PgPool;
 use std::fs;
 use tempfile::TempDir;
 
+// Scan a directory with the indexing crate, returning relative paths.
+fn local_files(dir: &TempDir) -> Result<Vec<LocalFile>> {
+    Ok(Indexer::new(dir.path().to_path_buf()).scan()?)
+}
+
 // Build a Sync wired to the isolated #[sqlx::test] database. The bucket is
 // not exercised by files_to_upload, so a real client is only constructed to
 // satisfy the struct's fields.
@@ -87,7 +92,7 @@ async fn skips_untouched_file_after_previous_upload(pool: PgPool) -> Result<()> 
     // to microsecond precision (not ceil'ed). This is what actually happens.
     insert_cloud_file(&sync.database, "a.txt", truncate_to_micros(mtime), ns_id).await;
 
-    let local_files = scan_files(dir.path().to_path_buf())?;
+    let local_files = local_files(&dir)?;
     let to_upload = sync
         .files_to_upload("ns-reupload", &local_files)
         .await?;
@@ -107,12 +112,12 @@ async fn selects_files_not_in_cloud(pool: PgPool) -> Result<()> {
 
     create_namespace(&sync.database, "ns-new").await;
 
-    let local_files = scan_files(dir.path().to_path_buf())?;
+    let local_files = local_files(&dir)?;
     let to_upload: Vec<PathBuf> = sync
         .files_to_upload("ns-new", &local_files)
         .await?
         .into_iter()
-        .map(|f| f.path)
+        .map(|f| f.file_path)
         .collect();
 
     // Neither file is in the cloud, so both must be selected. Paths are
@@ -135,7 +140,7 @@ async fn skips_files_up_to_date(pool: PgPool) -> Result<()> {
     // Cloud copy is not older than the local file -> up to date, skip.
     insert_cloud_file(&sync.database, "a.txt", ceil_to_db_precision(mtime), ns_id).await;
 
-    let local_files = scan_files(dir.path().to_path_buf())?;
+    let local_files = local_files(&dir)?;
     let to_upload = sync
         .files_to_upload("ns-skip", &local_files)
         .await?;
@@ -155,7 +160,7 @@ async fn skips_when_cloud_copy_is_newer(pool: PgPool) -> Result<()> {
     // Cloud copy was modified after the local file -> no re-upload.
     insert_cloud_file(&sync.database, "a.txt", mtime + TimeDelta::hours(1), ns_id).await;
 
-    let local_files = scan_files(dir.path().to_path_buf())?;
+    let local_files = local_files(&dir)?;
     let to_upload = sync
         .files_to_upload("ns-cloud-newer", &local_files)
         .await?;
@@ -175,12 +180,12 @@ async fn selects_when_local_copy_is_newer(pool: PgPool) -> Result<()> {
     // Cloud copy is older than the local file -> re-upload.
     insert_cloud_file(&sync.database, "a.txt", mtime - TimeDelta::hours(1), ns_id).await;
 
-    let local_files = scan_files(dir.path().to_path_buf())?;
+    let local_files = local_files(&dir)?;
     let to_upload: Vec<PathBuf> = sync
         .files_to_upload("ns-local-newer", &local_files)
         .await?
         .into_iter()
-        .map(|f| f.path)
+        .map(|f| f.file_path)
         .collect();
 
     assert_eq!(to_upload, vec![PathBuf::from("a.txt")]);
@@ -219,12 +224,12 @@ async fn mixes_upload_and_skip_decisions(pool: PgPool) -> Result<()> {
     )
     .await;
 
-    let local_files = scan_files(dir.path().to_path_buf())?;
+    let local_files = local_files(&dir)?;
     let to_upload: Vec<PathBuf> = sync
         .files_to_upload("ns-mixed", &local_files)
         .await?
         .into_iter()
-        .map(|f| f.path)
+        .map(|f| f.file_path)
         .collect();
 
     assert_eq!(
@@ -247,8 +252,9 @@ async fn pulls_cloud_only_files(pool: PgPool) -> Result<()> {
     // b.txt exists only in the cloud -> must be downloaded.
     insert_cloud_file(&sync.database, "b.txt", Utc::now(), ns_id).await;
 
+    let local_files = local_files(&dir)?;
     let to_download = sync
-        .files_to_pull("ns-pull-new", dir.path().to_path_buf())
+        .files_to_pull("ns-pull-new", &local_files)
         .await?;
 
     assert_eq!(to_download, vec![PathBuf::from("b.txt")]);
@@ -266,8 +272,9 @@ async fn skips_up_to_date_files_on_pull(pool: PgPool) -> Result<()> {
     // Cloud copy is not newer than the local file -> up to date, skip.
     insert_cloud_file(&sync.database, "a.txt", truncate_to_micros(mtime), ns_id).await;
 
+    let local_files = local_files(&dir)?;
     let to_download = sync
-        .files_to_pull("ns-pull-skip", dir.path().to_path_buf())
+        .files_to_pull("ns-pull-skip", &local_files)
         .await?;
 
     assert!(to_download.is_empty());
@@ -285,8 +292,9 @@ async fn pulls_when_cloud_copy_is_newer(pool: PgPool) -> Result<()> {
     // Cloud copy was modified after the local file -> download.
     insert_cloud_file(&sync.database, "a.txt", mtime + TimeDelta::hours(1), ns_id).await;
 
+    let local_files = local_files(&dir)?;
     let to_download = sync
-        .files_to_pull("ns-pull-cloud-newer", dir.path().to_path_buf())
+        .files_to_pull("ns-pull-cloud-newer", &local_files)
         .await?;
 
     assert_eq!(to_download, vec![PathBuf::from("a.txt")]);
@@ -304,8 +312,9 @@ async fn skips_pull_when_local_copy_is_newer(pool: PgPool) -> Result<()> {
     // Cloud copy is older than the local file -> no download.
     insert_cloud_file(&sync.database, "a.txt", mtime - TimeDelta::hours(1), ns_id).await;
 
+    let local_files = local_files(&dir)?;
     let to_download = sync
-        .files_to_pull("ns-pull-local-newer", dir.path().to_path_buf())
+        .files_to_pull("ns-pull-local-newer", &local_files)
         .await?;
 
     assert!(to_download.is_empty());
@@ -331,8 +340,9 @@ async fn lists_local_files_missing_from_cloud_for_deletion(pool: PgPool) -> Resu
     // untracked.txt only exists locally -> deleted by pull.
     write_file(&dir, "untracked.txt")?;
 
+    let local_files = local_files(&dir)?;
     let to_delete = sync
-        .files_to_delete_local("ns-pull-delete", dir.path().to_path_buf())
+        .files_to_delete_local("ns-pull-delete", &local_files)
         .await?;
 
     assert_eq!(to_delete, vec![PathBuf::from("untracked.txt")]);

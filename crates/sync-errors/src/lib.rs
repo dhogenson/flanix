@@ -54,6 +54,9 @@ pub enum SyncError {
 
     #[error("config directory not found: {0}")]
     ConfigDirNotFound(String),
+
+    #[error("anyhow error: {0}")]
+    Anyhow(#[from] anyhow::Error),
 }
 
 // The AWS SDK generates `From<SdkError<OperationError, R>> for Error` for each

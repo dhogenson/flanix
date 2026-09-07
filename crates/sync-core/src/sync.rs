@@ -10,13 +10,13 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use sync_indexing::LocalFile;
 
 use crate::Bucket;
 use crate::Config;
 use crate::Database;
 use crate::errors::SyncError;
-use crate::scan_files;
-use crate::scanner::File;
+use sync_indexing::Indexer;
 use uuid::Uuid;
 
 pub struct Sync {
@@ -52,24 +52,21 @@ impl Sync {
             }
         };
 
-        let local_files = scan_files(PathBuf::from(&path))?;
+        let indexer = Indexer::new(path.clone());
+        let local_files = indexer.scan()?;
 
-        let files = self
-            .files_to_upload(&namespace, &local_files)
-            .await?;
+        let files = self.files_to_upload(&namespace, &local_files).await?;
 
-        let files_to_delete = self
-            .files_to_delete(&namespace, &local_files)
-            .await?;
+        let files_to_delete = self.files_to_delete(&namespace, &local_files).await?;
 
         for file in files {
             // scan_files returns paths relative to the pushed folder, so join
             // the folder back on to read the actual file from disk.
-            let full_path = PathBuf::from(&path).join(&file.path);
+            let full_path = PathBuf::from(&path).join(&file.file_path);
 
             if let Some(bucket_key) = self
                 .database
-                .bucket_key_for_path_opt(&namespace, &file.path.to_string_lossy())
+                .bucket_key_for_path_opt(&namespace, &file.file_path.to_string_lossy())
                 .await?
             {
                 self.bucket
@@ -78,8 +75,8 @@ impl Sync {
                 self.database
                     .update_file_modified_at(
                         &namespace,
-                        &file.path.to_string_lossy(),
-                        file.modified,
+                        &file.file_path.to_string_lossy(),
+                        file.modified_time,
                     )
                     .await?;
             } else {
@@ -93,8 +90,8 @@ impl Sync {
                     .add_file(
                         file_uuid,
                         bucket_key,
-                        &file.path.to_string_lossy(),
-                        file.modified,
+                        &file.file_path.to_string_lossy(),
+                        file.modified_time,
                         namespace_id,
                     )
                     .await?;
@@ -127,8 +124,11 @@ impl Sync {
 
         let root = PathBuf::from(&path);
 
+        let indexer = Indexer::new(root.clone());
+        let local_files = indexer.scan()?;
+
         // first check for files that are newer on the cloud
-        let files_to_download = self.files_to_pull(&namespace, root.clone()).await?;
+        let files_to_download = self.files_to_pull(&namespace, &local_files).await?;
 
         for file in files_to_download {
             let path_str = file.to_string_lossy().to_string();
@@ -156,7 +156,7 @@ impl Sync {
             std::fs::File::open(&full_path)?.set_modified(modified_at.into())?;
         }
 
-        let files_to_delete = self.files_to_delete_local(&namespace, root.clone()).await?;
+        let files_to_delete = self.files_to_delete_local(&namespace, &local_files).await?;
 
         for file in files_to_delete {
             fs::remove_file(root.join(&file))?;
@@ -181,8 +181,8 @@ impl Sync {
     async fn files_to_upload(
         &self,
         namespace: &str,
-        local_files: &[File],
-    ) -> Result<Vec<File>, SyncError> {
+        local_files: &[LocalFile],
+    ) -> Result<Vec<LocalFile>, SyncError> {
         let cloud_files = self.database.get_files(namespace).await?;
 
         // Turn the cloud files into a index, where the key is the PathBuf and the value is the date time
@@ -194,14 +194,16 @@ impl Sync {
         let mut to_upload = Vec::new();
 
         for local_file in local_files {
-            let local_mtime = local_file.modified;
+            let local_mtime = local_file.modified_time;
             let local_mtime = truncate_to_micros(local_mtime);
 
-            match cloud_index.get(&local_file.path) {
+            match cloud_index.get(&local_file.file_path) {
                 // not in cloud at all — needs uploading
                 None => to_upload.push(local_file.clone()),
                 // in cloud, but local file is newer — needs re-uploading
-                Some(cloud_mtime) if local_mtime > *cloud_mtime => to_upload.push(local_file.clone()),
+                Some(cloud_mtime) if local_mtime > *cloud_mtime => {
+                    to_upload.push(local_file.clone())
+                }
                 _ => {}
             }
         }
@@ -212,7 +214,7 @@ impl Sync {
     async fn files_to_delete(
         &self,
         namespace: &str,
-        local_files: &[File],
+        local_files: &[LocalFile],
     ) -> Result<Vec<PathBuf>, SyncError> {
         let cloud_files = self.database.get_files(namespace).await?;
 
@@ -220,7 +222,7 @@ impl Sync {
 
         for cloud_file in cloud_files {
             let cloud_path = PathBuf::from(&cloud_file.local_path);
-            if !local_files.iter().any(|f| f.path == cloud_path) {
+            if !local_files.iter().any(|f| f.file_path == cloud_path) {
                 to_delete.push(cloud_path);
             }
         }
@@ -231,16 +233,16 @@ impl Sync {
     async fn files_to_pull(
         &self,
         namespace: &str,
-        path: PathBuf,
+        local_files: &[LocalFile],
     ) -> Result<Vec<PathBuf>, SyncError> {
-        let local_files = scan_files(path)?;
+        // let local_files = scan_files(path)?;
         let cloud_files = self.database.get_files(namespace).await?;
 
         // Turn the local files into an index, where the key is the relative
         // PathBuf and the value is the (truncated) date time.
         let local_index: HashMap<PathBuf, DateTime<Utc>> = local_files
             .into_iter()
-            .map(|f| (f.path, truncate_to_micros(f.modified)))
+            .map(|f| (f.file_path.clone(), truncate_to_micros(f.modified_time)))
             .collect();
 
         let mut to_download = Vec::new();
@@ -264,9 +266,9 @@ impl Sync {
     async fn files_to_delete_local(
         &self,
         namespace: &str,
-        path: PathBuf,
+        local_files: &[LocalFile],
     ) -> Result<Vec<PathBuf>, SyncError> {
-        let local_files: Vec<PathBuf> = scan_files(path)?.into_iter().map(|f| f.path).collect();
+        // let local_files: Vec<PathBuf> = scan_files(path)?.into_iter().map(|f| f.path).collect();
         let cloud_files = self.database.get_files(namespace).await?;
 
         let cloud_paths: Vec<PathBuf> = cloud_files
@@ -277,8 +279,8 @@ impl Sync {
         let mut to_delete: Vec<PathBuf> = Vec::new();
 
         for local_file in local_files {
-            if !cloud_paths.contains(&local_file) {
-                to_delete.push(local_file);
+            if !cloud_paths.contains(&local_file.file_path) {
+                to_delete.push(local_file.file_path.clone());
             }
         }
 

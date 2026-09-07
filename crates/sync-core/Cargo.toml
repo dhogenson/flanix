@@ -7,9 +7,10 @@ edition.workspace = true
 
 sync-config = { path = "../sync-config" }
 aws-config = { version = "1.10.1" }
+sync-indexing = { path = "../sync-indexing" }
 # aws-sdk-s3 = {version = "1.141.0" }
+chrono.workspace = true
 
-chrono = {version = "0.4.45", features = ["serde"]}
 tokio.workspace = true
 uuid.workspace = true
 glob = "0.3.4"
