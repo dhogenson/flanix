@@ -1,4 +1,5 @@
 mod db;
+mod diff;
 mod s3;
 mod sync;
 

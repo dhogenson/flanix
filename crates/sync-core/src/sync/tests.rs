@@ -1,8 +1,10 @@
 use super::*;
+use crate::db::truncate_to_micros;
 use anyhow::Result;
 use chrono::{DateTime, TimeDelta, Utc};
 use sqlx::PgPool;
 use std::fs;
+use sync_indexing::LocalFile;
 use tempfile::TempDir;
 
 // Scan a directory with the indexing crate, returning relative paths.
@@ -93,9 +95,7 @@ async fn skips_untouched_file_after_previous_upload(pool: PgPool) -> Result<()> 
     insert_cloud_file(&sync.database, "a.txt", truncate_to_micros(mtime), ns_id).await;
 
     let local_files = local_files(&dir)?;
-    let to_upload = sync
-        .files_to_upload("ns-reupload", &local_files)
-        .await?;
+    let to_upload = sync.files_to_upload("ns-reupload", &local_files).await?;
 
     // Even though local ns mtime is strictly greater than the stored cloud
     // mtime, they are equal at DB precision, so it must not re-upload.
@@ -141,9 +141,7 @@ async fn skips_files_up_to_date(pool: PgPool) -> Result<()> {
     insert_cloud_file(&sync.database, "a.txt", ceil_to_db_precision(mtime), ns_id).await;
 
     let local_files = local_files(&dir)?;
-    let to_upload = sync
-        .files_to_upload("ns-skip", &local_files)
-        .await?;
+    let to_upload = sync.files_to_upload("ns-skip", &local_files).await?;
 
     assert!(to_upload.is_empty());
     Ok(())
@@ -161,9 +159,7 @@ async fn skips_when_cloud_copy_is_newer(pool: PgPool) -> Result<()> {
     insert_cloud_file(&sync.database, "a.txt", mtime + TimeDelta::hours(1), ns_id).await;
 
     let local_files = local_files(&dir)?;
-    let to_upload = sync
-        .files_to_upload("ns-cloud-newer", &local_files)
-        .await?;
+    let to_upload = sync.files_to_upload("ns-cloud-newer", &local_files).await?;
 
     assert!(to_upload.is_empty());
     Ok(())
@@ -253,9 +249,7 @@ async fn pulls_cloud_only_files(pool: PgPool) -> Result<()> {
     insert_cloud_file(&sync.database, "b.txt", Utc::now(), ns_id).await;
 
     let local_files = local_files(&dir)?;
-    let to_download = sync
-        .files_to_pull("ns-pull-new", &local_files)
-        .await?;
+    let to_download = sync.files_to_pull("ns-pull-new", &local_files).await?;
 
     assert_eq!(to_download, vec![PathBuf::from("b.txt")]);
     Ok(())
@@ -273,9 +267,7 @@ async fn skips_up_to_date_files_on_pull(pool: PgPool) -> Result<()> {
     insert_cloud_file(&sync.database, "a.txt", truncate_to_micros(mtime), ns_id).await;
 
     let local_files = local_files(&dir)?;
-    let to_download = sync
-        .files_to_pull("ns-pull-skip", &local_files)
-        .await?;
+    let to_download = sync.files_to_pull("ns-pull-skip", &local_files).await?;
 
     assert!(to_download.is_empty());
     Ok(())
