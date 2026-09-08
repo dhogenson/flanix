@@ -5,6 +5,7 @@ export AWS_ENDPOINT_URL="http://localhost:4567";
 export AWS_DEFAULT_REGION="us-east-1";
 export AWS_ACCESS_KEY_ID="test";
 export AWS_SECRET_ACCESS_KEY="test";
+export BUCKET_NAME="test"
 
 # sqlx compile-time macros need the schema in the live database
 for file in crates/*/migrations/*.sql; do

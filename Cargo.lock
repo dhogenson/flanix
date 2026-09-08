@@ -3708,6 +3708,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "chrono",
+ "tempfile",
  "walkdir",
 ]
 

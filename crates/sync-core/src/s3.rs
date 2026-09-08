@@ -27,15 +27,13 @@ impl Bucket {
 
         // Only set credentials if they're non-empty (avoids overriding IAM roles)
         if !config.aws_access_key_id.is_empty() && !config.aws_secret_access_key.is_empty() {
-            sdk_config = sdk_config.credentials_provider(
-                aws_sdk_s3::config::Credentials::new(
-                    config.aws_access_key_id.clone(),
-                    config.aws_secret_access_key.clone(),
-                    None,
-                    None,
-                    "sync-config",
-                ),
-            );
+            sdk_config = sdk_config.credentials_provider(aws_sdk_s3::config::Credentials::new(
+                config.aws_access_key_id.clone(),
+                config.aws_secret_access_key.clone(),
+                None,
+                None,
+                "sync-config",
+            ));
         }
 
         let sdk_config = sdk_config.load().await;
@@ -43,6 +41,16 @@ impl Bucket {
             name: config.bucket_name.clone(),
             location: config.aws_default_region.clone(),
             client: Client::new(&sdk_config),
+        }
+    }
+
+    pub async fn from_env_vars(bucket_name: &str) -> Self {
+        use std::env;
+        let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+        Self {
+            name: bucket_name.to_string(),
+            location: env::var("AWS_DEFAULT_REGION").unwrap(),
+            client: Client::new(&config),
         }
     }
 

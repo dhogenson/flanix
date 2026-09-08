@@ -4,7 +4,7 @@ use std::io::{BufReader, Read};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use std::path::{Component, PathBuf};
+use std::path::PathBuf;
 use walkdir::WalkDir;
 
 pub struct Indexer {
@@ -20,16 +20,15 @@ pub struct LocalFile {
 }
 
 impl LocalFile {
-    pub fn new(file_path: PathBuf, modified_time: DateTime<Utc>, file_size: u64) -> Self {
+    pub fn new(file_path: PathBuf, modified_time: DateTime<Utc>, file_size: u64) -> Result<Self> {
         let mtime = modified_time.trunc_subsecs(6);
-        let normalized_path = normalize(&file_path);
 
-        LocalFile {
-            file_path: normalized_path,
+        Ok(Self {
+            file_path,
             modified_time: mtime,
             file_size,
             file_hash: None,
-        }
+        })
     }
 
     pub fn hash_file(&mut self) -> Result<()> {
@@ -96,7 +95,7 @@ impl Indexer {
                 file_path.strip_prefix(&self.scan_path)?.to_path_buf(),
                 modified_time.into(),
                 file_size,
-            );
+            )?;
 
             files.push(local_file);
         }
@@ -105,37 +104,30 @@ impl Indexer {
     }
 }
 
-// Made by ai. Check what is does
-pub fn normalize(path: &PathBuf) -> PathBuf {
-    let mut out = Vec::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
-    for component in path.components() {
-        match component {
-            Component::CurDir => {
-                // skip "." entirely
-            }
-            Component::ParentDir => {
-                match out.last() {
-                    // ".." after a normal segment cancels it out
-                    Some(Component::Normal(_)) => {
-                        out.pop();
-                    }
-                    // ".." at the root is a no-op (can't go above root)
-                    Some(Component::RootDir) => {}
-                    // nothing to pop, or the top is already "..": keep it
-                    None | Some(Component::ParentDir) => {
-                        out.push(component);
-                    }
-                    // Prefix (Windows drive letters) — keep the ".." after it
-                    Some(Component::Prefix(_)) => {
-                        out.push(component);
-                    }
-                    Some(Component::CurDir) => unreachable!("CurDir is never pushed"),
-                }
-            }
-            other => out.push(other),
-        }
+    #[test]
+    fn test_hash_file() -> Result<()> {
+        let mut temp_file = NamedTempFile::new()?;
+
+        let content = b"hello world";
+        temp_file.write_all(content)?;
+
+        let file_path = temp_file.path().to_path_buf();
+        let metadata = fs::metadata(&file_path)?;
+        let modified_time = metadata.modified()?;
+        let file_size = metadata.len();
+
+        let mut local_file = LocalFile::new(file_path, modified_time.into(), file_size)?;
+
+        local_file.hash_file()?;
+
+        let expected_hash = blake3::hash(content);
+        assert_eq!(local_file.file_hash, Some(expected_hash));
+        Ok(())
     }
-
-    out.into_iter().collect()
 }
