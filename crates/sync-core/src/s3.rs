@@ -44,14 +44,14 @@ impl Bucket {
         }
     }
 
-    pub async fn from_env_vars(bucket_name: &str) -> Self {
+    pub async fn from_env_vars(bucket_name: &str) -> Result<Self, SyncError> {
         use std::env;
         let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
-        Self {
+        Ok(Self {
             name: bucket_name.to_string(),
-            location: env::var("AWS_DEFAULT_REGION").unwrap(),
+            location: env::var("AWS_DEFAULT_REGION")?,
             client: Client::new(&config),
-        }
+        })
     }
 
     /// Created bucket if it does not exists in s3

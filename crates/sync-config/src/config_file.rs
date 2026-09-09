@@ -96,7 +96,12 @@ impl Config {
         let config_file = config_folder.join(PathBuf::from("config.toml"));
 
         if !config_file.exists() {
-            File::create(&config_file)?;
+            let toml_string = toml::to_string_pretty(&Config::default())?;
+            let file = File::create(&config_file)?;
+            let mut writer = BufWriter::new(file);
+
+            write!(writer, "{}", toml_string)?;
+            writer.flush()?;
         }
 
         Ok(config_file)

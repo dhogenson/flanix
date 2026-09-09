@@ -23,7 +23,7 @@ fn test_config(bucket_name: String) -> Config {
 // Also tests for the bucket exists function
 #[tokio::test]
 async fn test_create_bucket_with_bucket() -> Result<()> {
-    let bucket = Bucket::from_env_vars(&unique_bucket_name()).await;
+    let bucket = Bucket::from_env_vars(&unique_bucket_name()).await?;
     bucket.create_bucket().await?;
 
     assert!(bucket.bucket_exists().await?);
@@ -35,7 +35,7 @@ async fn test_create_bucket_with_bucket() -> Result<()> {
 // this code does not remove the bucket
 #[tokio::test]
 async fn test_create_bucket_without_bucket() -> Result<()> {
-    let bucket = Bucket::from_env_vars(&unique_bucket_name()).await;
+    let bucket = Bucket::from_env_vars(&unique_bucket_name()).await?;
 
     assert!(!bucket.bucket_exists().await?);
 
@@ -44,7 +44,7 @@ async fn test_create_bucket_without_bucket() -> Result<()> {
 
 #[tokio::test]
 async fn test_upload_object() -> Result<()> {
-    let bucket = Bucket::from_env_vars(&unique_bucket_name()).await;
+    let bucket = Bucket::from_env_vars(&unique_bucket_name()).await?;
 
     bucket.init().await?;
     let uuid = Uuid::new_v4();

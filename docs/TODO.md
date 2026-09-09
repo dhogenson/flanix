@@ -1,6 +1,6 @@
 # TODO
 
-A consolidated list of todos gathered from the daily logs in `docs/logs/`.
+A consolidated list of todos gathered from the daily logs in `docs/logs/` and codebase analysis.
 
 ---
 
@@ -17,6 +17,28 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/`.
 
 ---
 
+## Critical: Fix Before Publishing to GitHub
+
+- [ ] **`.env` committed to git** — despite being listed in `.gitignore`, the `.env` file is already tracked (committed in `f9310b3` and earlier). The `.gitignore` rule is ineffective once a file is tracked. Fix: `git rm --cached .env` to untrack it while keeping the local file. *(Verified: `git ls-files` shows `.env` is tracked.)*
+- [x] **First-run config crash** — `config_file.rs:98-100` created an empty config file with `File::create()`, then `Config::new()` (lines 51-59) failed to parse the empty content via `toml::from_str`. On a fresh system the app was unusable — the `add` subcommand was never reachable because `Sync::new()` fails first. *(Fixed: `config_file.rs` now writes default config content when creating the file.)*
+- [ ] **`unwrap()` panic on missing env var** — `s3.rs:52` does `env::var("AWS_DEFAULT_REGION").unwrap()` which panics in production if the variable isn't set. Should return `Result` or fall back to `GLOBAL_REGION`.
+- [ ] **Silently swallowed walkdir errors** — `scan_files.rs:64,81` uses `.filter_map(|e| e.ok())` which silently discards all `WalkDir` errors (permission denied, broken symlinks, I/O errors). Files in unreadable directories are silently skipped → data loss on push, stale files on pull. Fix: propagate or surface errors.
+- [ ] **Add CI/CD pipeline** — no `.github/workflows/` exists. Add GitHub Actions to run `cargo fmt --check`, `cargo clippy`, and `tests.sh` on push/PR.
+- [ ] **Add LICENSE file** — no LICENSE exists anywhere in the repo. Without one, GitHub flags the repo and others legally can't use the code. MIT recommended for personal projects.
+
+---
+
+## Optimization: Performance
+
+- [ ] **Double directory traversal** — `scan_files.rs:60-75` walks the entire tree once with `WalkDir::new(&self.scan_path)` to collect all dirs, then walks each dir *again* with `max_depth(1)` in `scan_folder()`. Every directory is visited twice. Fix: single `WalkDir` pass collecting files directly.
+- [ ] **Quadratic diff logic** — `diff.rs:52-56` and `diff.rs:110-113` use `.contains()`/`.any()` on `Vec`s inside loops → O(n*m). Fix: use `HashSet` (a `local_index` HashMap is already built at `diff.rs:74` — reuse it instead of rebuilding/looking up per-file).
+- [ ] **`download_object` buffers entire file in memory** — `s3.rs:154` does `response.body.collect().await?.into_bytes()` before writing to disk. For large files this is a memory concern, especially on mobile (the stated target). Fix: stream the body directly to a file via `AsyncWriteExt`.
+- [ ] **Unnecessary cloning in diff** — `diff.rs:31,34` clone each `LocalFile` (including `PathBuf` + `Option<blake3::Hash>`) on every push/pull decision; `diff.rs:74` clones every path building `local_index`. Consider using references / `Arc` or restructuring to avoid the allocations.
+- [ ] **`list_buckets()` used for existence check** — `s3.rs:66-80` lists ALL buckets and matches by name. Fix: use `head_bucket()` (single request) for existence checks.
+- [ ] **`max_connections(5)` hardcoded** — `db.rs:30`. Should be configurable.
+
+---
+
 ## Sync Core Improvements
 
 - [ ] **Full rescan is expensive** — the current sync does a full rescan of the folder (glob-based), which is bad for large folders. *(Still open: no incremental/delta scanning exists.)*
@@ -25,6 +47,34 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/`.
 - [ ] **Partial sync on failure** — if push or pull fails mid-loop, you end up in a partially-synced state. Handle this gracefully (e.g., atomic commits / rollback). *(Still open: `push`/`pull` use `?` and don't roll back partial writes/deletes.)*
 - [ ] **Large file downloads** — `download_object` reads everything into memory; stream to disk instead for large files. *(Still open: `s3.rs` line 128 does `response.body.collect().await?.into_bytes()` before writing to disk.)*
 - [ ] Figure out how to store the database values that i keep calling over and over again
+
+---
+
+## Cleanup / Housekeeping
+
+- [ ] **Unused dependencies** — remove dead deps:
+  - `uuid.workspace = true` in `sync-cli/Cargo.toml:11` (never used)
+  - `glob = "0.3.4"` in `sync-core/Cargo.toml:16` (never used in source)
+  - `serde_json.workspace = true` in `sync-core/Cargo.toml:20` (never used directly)
+  - `dotenvy = "0.15.7"` in `sync-config/Cargo.toml:11` (never called — `.env` file exists but is never loaded)
+- [ ] **Dead code** — remove or wire up:
+  - `Database::get_file_ids()` in `db.rs:108-117` — `pub` but never called anywhere
+  - `file_hash` field + `hash_file()` in `scan_files.rs:19,34` — only used in tests, never in production sync
+  - `test_hash_file_on_big_file` in `scan_files.rs:133-136` — empty test stub that asserts nothing
+- [ ] **Commented-out code** — remove:
+  - `diff.rs:67` — `// let local_files = scan_files(path)?;`
+  - `diff.rs:100` — `// let local_files: Vec<PathBuf> = ...`
+  - `sync-core/Cargo.toml:11` — `# aws-sdk-s3 = {version = "1.141.0" }`
+- [ ] **Non-atomic config writes** — `config_file.rs:76-79` `create_namespace()` writes via `File::create()` + `BufWriter` without flush/sync, truncating the file in place. A crash mid-write corrupts the entire config. Fix: write to temp file, then atomically rename.
+- [ ] **Non-atomic push** — `sync.rs:57-105` uploads file-by-file without a transaction. Crash between S3 upload and DB insert leaves orphaned S3 objects. *(Related to "Partial sync on failure" below.)*
+- [ ] **`dotenvy` never called** — `.env` exists in repo root with AWS/DB values, but no code calls `dotenvy::dotenv()`. Either wire it up in `main.rs` or remove the dependency.
+- [ ] **Cargo.toml metadata** — no `license`, `description`, or `repository` fields on any crate. Add them for GitHub/crates.io hygiene.
+- [ ] **Clippy `result_large_err` (18 warnings)** — `SyncError` is 168 bytes. Consider boxing large variants (`Box<aws_sdk_s3::Error>`, `Box<ByteStreamError>`, `Box<anyhow::Error>`) to shrink the enum.
+- [ ] **Clippy fixes available via `cargo clippy --fix`** — `needless_borrow`, `redundant_field_names`, `collapsible_if`, `useless_conversion`, `vec_init_then_push`, `new_without_default`, `empty_line_after_outer_attr`, `field_reassign_with_default`.
+- [ ] **Hardcoded test defaults** — `config_file.rs:37-46` `Config::default()` hardcodes `http://localhost:4566`, `user:password`, etc. Acceptable for dev but should be externalized before release.
+- [ ] **Add `.env.example`** — provide a template of expected env vars (the real `.env` should not be tracked; see Critical section).
+- [ ] **Expand `.gitignore`** — currently only `/test_files`, `/target`, `.env`. Consider adding `**/*.rs.bk`, `.DS_Store`, `*.local`, `config.toml`, `.floci/`.
+- [ ] **TUI title typo** — `sync-tui/src/lib.rs:155` says "This is a app" → should be "This is an app".
 
 ---
 
