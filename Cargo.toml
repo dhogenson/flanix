@@ -5,7 +5,6 @@ members = [
     "crates/sync-cli",
     "crates/sync-config",
     "crates/sync-errors",
-    "crates/sync-tui",
     "crates/sync-indexing"
 ]
 

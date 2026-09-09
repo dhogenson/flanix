@@ -4,7 +4,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::fs;
 use sync_core::Sync;
-use sync_tui::App;
 use verify_inputs::validate_namespace;
 
 use crate::verify_inputs::validate_path;
@@ -35,8 +34,6 @@ enum Functions {
         #[arg(value_parser = validate_namespace)]
         namespace: String,
     },
-
-    Config,
 }
 
 #[tokio::main]
@@ -55,11 +52,6 @@ async fn main() -> Result<()> {
         // The push function already verifies the namespace
         Some(Functions::Push { namespace }) => sync.push(namespace).await,
         Some(Functions::Pull { namespace }) => sync.pull(namespace).await,
-        Some(Functions::Config) => {
-            let mut app = App::new();
-            app.run()?;
-            return Ok(());
-        }
         None => Ok(()),
     };
 
