@@ -70,7 +70,7 @@ impl Sync {
         // Turn the local files into an index, where the key is the relative
         // PathBuf and the value is the (truncated) date time.
         let local_index: HashMap<PathBuf, DateTime<Utc>> = local_files
-            .into_iter()
+            .iter()
             .map(|f| (f.file_path.clone(), truncate_to_micros(f.modified_time)))
             .collect();
 
@@ -97,7 +97,6 @@ impl Sync {
         namespace: &str,
         local_files: &[LocalFile],
     ) -> Result<Vec<PathBuf>, SyncError> {
-        // let local_files: Vec<PathBuf> = scan_files(path)?.into_iter().map(|f| f.path).collect();
         let cloud_files = self.database.get_files(namespace).await?;
 
         let cloud_paths: Vec<PathBuf> = cloud_files

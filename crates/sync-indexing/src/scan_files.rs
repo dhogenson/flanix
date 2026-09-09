@@ -58,30 +58,14 @@ impl Indexer {
     }
 
     pub fn scan(&self) -> Result<Vec<LocalFile>> {
-        let mut local_files: Vec<LocalFile> = Vec::new();
-        let folder_paths: Vec<PathBuf> = WalkDir::new(&self.scan_path)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_dir())
-            .map(|e| e.path().to_path_buf())
-            .collect();
+        let mut file_paths: Vec<PathBuf> = Vec::new();
 
-        for folder in &folder_paths {
-            let mut folder_files = self.scan_folder(&folder)?;
-            local_files.append(&mut folder_files);
+        for entry in WalkDir::new(&self.scan_path) {
+            let entry = entry?;
+            if entry.file_type().is_file() {
+                file_paths.push(entry.path().to_path_buf());
+            }
         }
-
-        Ok(local_files)
-    }
-
-    fn scan_folder(&self, folder_path: &PathBuf) -> Result<Vec<LocalFile>> {
-        let file_paths: Vec<PathBuf> = WalkDir::new(&folder_path)
-            .max_depth(1)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .map(|e| e.path().to_path_buf())
-            .collect();
 
         let mut files: Vec<LocalFile> = Vec::new();
 

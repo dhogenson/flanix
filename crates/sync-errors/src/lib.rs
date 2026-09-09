@@ -26,10 +26,10 @@ pub enum SyncError {
     DatabaseError(#[from] DbError),
 
     #[error("s3 error: {0}")]
-    S3(#[from] aws_sdk_s3::Error),
+    S3(Box<aws_sdk_s3::Error>),
 
     #[error("s3 stream error: {0}")]
-    S3Stream(#[from] aws_sdk_s3::primitives::ByteStreamError),
+    S3Stream(Box<aws_sdk_s3::primitives::ByteStreamError>),
 
     #[error("config error: {0}")]
     Config(#[from] std::env::VarError),
@@ -59,14 +59,30 @@ pub enum SyncError {
     Anyhow(#[from] anyhow::Error),
 }
 
+// Project that boxes S3-specific error types to keep the `Err` variant small
+// (aws_sdk_s3::Error and ByteStreamError are large, and a large Err type
+// penalises every `?` in the crate).
+//
 // The AWS SDK generates `From<SdkError<OperationError, R>> for Error` for each
 // operation, but `?` on `.send().await` yields the raw `SdkError<E, R>`. This
 // bridges that gap so all S3 operation failures convert into `SyncError::S3`.
+impl From<aws_sdk_s3::Error> for SyncError {
+    fn from(err: aws_sdk_s3::Error) -> Self {
+        SyncError::S3(Box::new(err))
+    }
+}
+
+impl From<aws_sdk_s3::primitives::ByteStreamError> for SyncError {
+    fn from(err: aws_sdk_s3::primitives::ByteStreamError) -> Self {
+        SyncError::S3Stream(Box::new(err))
+    }
+}
+
 impl<E, R> From<aws_sdk_s3::error::SdkError<E, R>> for SyncError
 where
     aws_sdk_s3::Error: From<aws_sdk_s3::error::SdkError<E, R>>,
 {
     fn from(err: aws_sdk_s3::error::SdkError<E, R>) -> Self {
-        SyncError::S3(err.into())
+        SyncError::S3(Box::new(err.into()))
     }
 }

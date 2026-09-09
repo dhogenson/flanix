@@ -121,10 +121,10 @@ impl Bucket {
             Ok(_) => Ok(true),
             Err(err) => {
                 // Check if err is not found
-                if let Some(serice_err) = err.as_service_error() {
-                    if serice_err.is_not_found() {
-                        return Ok(false);
-                    }
+                if let Some(serice_err) = err.as_service_error()
+                    && serice_err.is_not_found()
+                {
+                    return Ok(false);
                 }
                 Err(err.into())
             }

@@ -41,9 +41,10 @@ impl Sync {
         let path = match self.config.find_namespace_path(&namespace.to_string()) {
             Some(path) => path,
             None => {
-                return Err(SyncError::NamespaceNotFound(
-                    format!("namespace: {}", namespace).into(),
-                ));
+                return Err(SyncError::NamespaceNotFound(format!(
+                    "namespace: {}",
+                    namespace
+                )));
             }
         };
 
@@ -111,9 +112,10 @@ impl Sync {
         let path = match self.config.find_namespace_path(&namespace.to_string()) {
             Some(path) => path,
             None => {
-                return Err(SyncError::NamespaceNotFound(
-                    format!("namespace: {}", namespace).into(),
-                ));
+                return Err(SyncError::NamespaceNotFound(format!(
+                    "namespace: {}",
+                    namespace
+                )));
             }
         };
 

@@ -29,7 +29,7 @@ impl Database {
     pub async fn new(url: &str) -> Result<Self, DbError> {
         let pool = PgPoolOptions::new().max_connections(5).connect(url).await?;
 
-        Ok(Self { pool: pool })
+        Ok(Self { pool })
     }
 
     pub async fn from_pool(pool: Pool<Postgres>) -> Self {

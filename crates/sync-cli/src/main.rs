@@ -11,7 +11,6 @@ use crate::verify_inputs::validate_path;
 
 #[derive(Parser)]
 #[command(name = "Sync", about = "A sync program")]
-
 struct Cli {
     #[command(subcommand)]
     command: Option<Functions>,
