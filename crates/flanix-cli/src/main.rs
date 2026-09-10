@@ -9,7 +9,13 @@ use verify_inputs::validate_namespace;
 use crate::verify_inputs::validate_path;
 
 #[derive(Parser)]
-#[command(name = "Flanix", about = "A sync program")]
+#[command(
+    name = "Flanix",
+    version,
+    about = "A sync program",
+    arg_required_else_help = true
+)]
+
 struct Cli {
     #[command(subcommand)]
     command: Option<Functions>,
@@ -40,7 +46,6 @@ enum Functions {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut sync = Sync::new().await?;
-
     // verify paths and expand them etc
 
     let result = match cli.command {
