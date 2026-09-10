@@ -33,6 +33,6 @@ jobs:
       - name: Create Release and Upload Binary
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/my-binary
+          files: target/release/flanix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
