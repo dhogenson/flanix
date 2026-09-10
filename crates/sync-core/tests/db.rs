@@ -1,19 +1,18 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use sqlx::Row;
 use sync_core::Database;
 use uuid::Uuid;
 
 #[sqlx::test]
 async fn test_insert_record(pool: PgPool) -> Result<()> {
     // pool is already migrated and isolated
-    sqlx::query!(
-        "INSERT INTO namespaces (id, name) VALUES ($1, $2)",
-        uuid::Uuid::new_v4(),
-        "test"
-    )
-    .execute(&pool)
-    .await?;
+    sqlx::query("INSERT INTO namespaces (id, name) VALUES ($1, $2)")
+        .bind(uuid::Uuid::new_v4())
+        .bind("test")
+        .execute(&pool)
+        .await?;
 
     Ok(())
 }
@@ -45,11 +44,12 @@ async fn test_add_file(pool: PgPool) -> Result<()> {
         )
         .await?;
 
-    let row = sqlx::query!("SELECT id FROM files WHERE id = $1", uuid)
+    let row = sqlx::query("SELECT id FROM files WHERE id = $1")
+        .bind(uuid)
         .fetch_one(&pool)
         .await?;
 
-    assert_eq!(row.id, uuid);
+    assert_eq!(row.get::<Uuid, _>("id"), uuid);
 
     Ok(())
 }
@@ -62,11 +62,12 @@ async fn test_create_namespace(pool: PgPool) -> Result<()> {
 
     database.create_namespace(uuid, "test").await?;
 
-    let row = sqlx::query!("SELECT id FROM namespaces WHERE id = $1", uuid)
+    let row = sqlx::query("SELECT id FROM namespaces WHERE id = $1")
+        .bind(uuid)
         .fetch_one(&pool)
         .await?;
 
-    assert_eq!(row.id, uuid);
+    assert_eq!(row.get::<Uuid, _>("id"), uuid);
 
     Ok(())
 }
