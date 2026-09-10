@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/dhogenson/sync"
+repository = "https://github.com/dhogenson/flanix"
 authors = ["Dallin Hogenson <dallin.hogenson@icloud.com"]
 description = "A syncing program"
 

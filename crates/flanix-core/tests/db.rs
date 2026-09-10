@@ -1,8 +1,8 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use flanix_core::Database;
 use sqlx::PgPool;
 use sqlx::Row;
-use flanix_core::Database;
 use uuid::Uuid;
 
 #[sqlx::test]

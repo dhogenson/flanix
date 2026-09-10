@@ -31,6 +31,7 @@ pub struct Config {
 }
 
 impl Default for Config {
+    /// These values are dev only
     fn default() -> Self {
         Self {
             bucket_name: "test".to_string(),

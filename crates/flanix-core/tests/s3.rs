@@ -1,8 +1,8 @@
 use anyhow::Result;
+use flanix_core::Bucket;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use sync_config::Config;
-use flanix_core::Bucket;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 

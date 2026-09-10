@@ -1,5 +1,9 @@
 use crate::errors::SyncError;
 use aws_config::BehaviorVersion;
+use aws_credential_types::{
+    Credentials,
+    provider::{ProvideCredentials, SharedCredentialsProvider},
+};
 use aws_sdk_s3::{
     Client,
     primitives::ByteStream,
@@ -20,22 +24,37 @@ pub struct Bucket {
 
 impl Bucket {
     pub async fn new(config: &Config) -> Self {
-        let mut sdk_config = aws_config::defaults(BehaviorVersion::latest())
+        let sdk_config = aws_config::defaults(BehaviorVersion::latest())
             .region(aws_config::Region::new(config.aws_default_region.clone()))
-            .endpoint_url(&config.aws_endpoint);
+            .endpoint_url(&config.aws_endpoint)
+            .load()
+            .await;
 
-        // Only set credentials if they're non-empty (avoids overriding IAM roles)
-        if !config.aws_access_key_id.is_empty() && !config.aws_secret_access_key.is_empty() {
-            sdk_config = sdk_config.credentials_provider(aws_sdk_s3::config::Credentials::new(
-                config.aws_access_key_id.clone(),
-                config.aws_secret_access_key.clone(),
-                None,
-                None,
-                "sync-config",
-            ));
-        }
-
-        let sdk_config = sdk_config.load().await;
+        // Prefer the AWS SDK credential chain (environment, profiles, IAM
+        // roles, etc.). Keep config-file credentials as a fallback for local
+        // development and existing configs.
+        let sdk_config = if let Some(provider) = sdk_config.credentials_provider() {
+            if provider.provide_credentials().await.is_ok() {
+                sdk_config
+            } else if !config.aws_access_key_id.is_empty()
+                && !config.aws_secret_access_key.is_empty()
+            {
+                sdk_config
+                    .to_builder()
+                    .credentials_provider(SharedCredentialsProvider::new(Credentials::new(
+                        config.aws_access_key_id.clone(),
+                        config.aws_secret_access_key.clone(),
+                        None,
+                        None,
+                        "flanix-config",
+                    )))
+                    .build()
+            } else {
+                sdk_config
+            }
+        } else {
+            sdk_config
+        };
         Self {
             name: config.bucket_name.clone(),
             location: config.aws_default_region.clone(),
