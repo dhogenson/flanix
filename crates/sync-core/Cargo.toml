@@ -4,24 +4,16 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-
+sync-errors = { path = "../sync-errors" }
 sync-config = { path = "../sync-config" }
-aws-config = { version = "1.10.1" }
 sync-indexing = { path = "../sync-indexing" }
-# aws-sdk-s3 = {version = "1.141.0" }
 chrono.workspace = true
-
 tokio.workspace = true
 uuid.workspace = true
-glob = "0.3.4"
 thiserror.workspace = true
-
-serde.workspace = true
-serde_json.workspace = true
-
 aws-sdk-s3.workspace = true
 sqlx.workspace = true
-sync-errors = { path = "../sync-errors" }
+aws-config = "1.10.1"
 
 [dev-dependencies]
 tempfile = "3.27.0"

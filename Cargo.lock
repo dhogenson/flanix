@@ -2872,7 +2872,6 @@ dependencies = [
  "clap",
  "sync-core",
  "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -2880,7 +2879,6 @@ name = "sync-config"
 version = "0.1.0"
 dependencies = [
  "directories",
- "dotenvy",
  "serde",
  "sync-errors",
  "toml",
@@ -2894,9 +2892,6 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "chrono",
- "glob",
- "serde",
- "serde_json",
  "sqlx",
  "sync-config",
  "sync-errors",

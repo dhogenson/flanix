@@ -105,17 +105,6 @@ impl Database {
         Ok(uuid)
     }
 
-    pub async fn get_file_ids(&self, namespace: &str) -> Result<Vec<Uuid>, DbError> {
-        let namespace_id = self.get_namespace_id(namespace).await?;
-
-        let uuids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM files WHERE namespace_id = $1")
-            .bind(namespace_id)
-            .fetch_all(&self.pool)
-            .await?;
-
-        Ok(uuids)
-    }
-
     pub async fn delete_file(&self, namespace: &str, local_path: &str) -> Result<(), DbError> {
         let namespace_id = self.get_namespace_id(namespace).await?;
 
