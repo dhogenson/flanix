@@ -1,6 +1,6 @@
-# Overview
+# Flanix
 
-This is a syncing program made in Rust. It's like onedrive but I plain to make it run on Android and maybe iOS.
+Flanix is a syncing program made in rust. I took inspiration from how syncthing could sync folders of your choice, but making it sync to the cloud instead of making it node based. And one other thing I plan to solve is to make this run on phones to (android can but it does not have a app) 
 
 # Building
 
