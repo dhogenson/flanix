@@ -30,6 +30,7 @@ pub struct Config {
     pub aws_access_key_id: String,
     pub aws_secret_access_key: String,
     pub database_url: String,
+    pub max_database_connections: u64,
     pub namespaces: Vec<Namespace>,
 }
 
@@ -42,6 +43,7 @@ impl Default for Config {
             aws_access_key_id: "test".to_string(),
             aws_secret_access_key: "test".to_string(),
             database_url: "postgres://user:password@localhost/mydb".to_string(),
+            max_database_connections: 5,
             namespaces: Vec::new(),
         }
     }

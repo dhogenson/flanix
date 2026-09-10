@@ -6,7 +6,6 @@ use aws_sdk_s3::{
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
 use sync_config::Config;
-use tokio::io::AsyncWriteExt;
 
 const GLOBAL_REGION: &str = "us-east-1";
 
@@ -64,19 +63,22 @@ impl Bucket {
     }
 
     pub async fn bucket_exists(&self) -> Result<bool, SyncError> {
-        let result = self.client.list_buckets().send().await?;
-        let mut has_bucket = false;
-
-        if let Some(buckets) = result.buckets {
-            for bucket in buckets {
-                if bucket.name.unwrap_or_default() == self.name {
-                    has_bucket = true;
-                    break;
+        match self.client.head_bucket().bucket(&self.name).send().await {
+            Ok(_) => Ok(true),
+            Err(err) => {
+                if let Some(svc) = err.as_service_error() {
+                    if svc.is_not_found() {
+                        return Ok(false);
+                    }
+                    // 403 Forbidden means the bucket exists but we lack permission,
+                    // but it means that it still exists so treat it as such
+                    if svc.meta().code() == Some("AccessDenied") {
+                        return Ok(true);
+                    }
                 }
+                Err(err.into())
             }
         }
-
-        Ok(has_bucket)
     }
 
     pub async fn create_bucket(&self) -> Result<(), SyncError> {
@@ -151,9 +153,10 @@ impl Bucket {
             .send()
             .await?;
 
-        let data = response.body.collect().await?.into_bytes();
+        // Steam file to disk
         let mut file = tokio::fs::File::create(path).await?;
-        file.write_all(&data).await?;
+        let mut body = response.body.into_async_read();
+        tokio::io::copy(&mut body, &mut file).await?;
         file.sync_all().await?;
 
         Ok(())

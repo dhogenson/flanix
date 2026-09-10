@@ -2,7 +2,7 @@ use crate::Sync;
 use crate::db::truncate_to_micros;
 use crate::errors::SyncError;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use sync_indexing::LocalFile;
 
@@ -27,9 +27,9 @@ impl Sync {
             let local_mtime = truncate_to_micros(local_mtime);
 
             match cloud_index.get(&local_file.file_path) {
-                // not in cloud at all — needs uploading
+                // not in cloud at all needs uploading
                 None => to_upload.push(local_file.clone()),
-                // in cloud, but local file is newer — needs re-uploading
+                // in cloud, but local file is newer needs re-uploading
                 Some(cloud_mtime) if local_mtime > *cloud_mtime => {
                     to_upload.push(local_file.clone())
                 }
@@ -47,14 +47,13 @@ impl Sync {
     ) -> Result<Vec<PathBuf>, SyncError> {
         let cloud_files = self.database.get_files(namespace).await?;
 
-        let mut to_delete: Vec<PathBuf> = Vec::new();
+        let local_paths: HashSet<&PathBuf> = local_files.iter().map(|f| &f.file_path).collect();
 
-        for cloud_file in cloud_files {
-            let cloud_path = PathBuf::from(&cloud_file.local_path);
-            if !local_files.iter().any(|f| f.file_path == cloud_path) {
-                to_delete.push(cloud_path);
-            }
-        }
+        let to_delete: Vec<PathBuf> = cloud_files
+            .into_iter()
+            .map(|f| PathBuf::from(f.local_path))
+            .filter(|p| !local_paths.contains(p))
+            .collect();
 
         Ok(to_delete)
     }
@@ -99,18 +98,16 @@ impl Sync {
     ) -> Result<Vec<PathBuf>, SyncError> {
         let cloud_files = self.database.get_files(namespace).await?;
 
-        let cloud_paths: Vec<PathBuf> = cloud_files
+        let cloud_paths: HashSet<PathBuf> = cloud_files
             .into_iter()
             .map(|f| PathBuf::from(f.local_path))
             .collect();
 
-        let mut to_delete: Vec<PathBuf> = Vec::new();
-
-        for local_file in local_files {
-            if !cloud_paths.contains(&local_file.file_path) {
-                to_delete.push(local_file.file_path.clone());
-            }
-        }
+        let to_delete: Vec<PathBuf> = local_files
+            .iter()
+            .filter(|f| !cloud_paths.contains(&f.file_path))
+            .map(|f| f.file_path.clone())
+            .collect();
 
         Ok(to_delete)
     }

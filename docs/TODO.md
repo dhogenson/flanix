@@ -6,22 +6,17 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/` and co
 
 ## In Progress / New Ideas
 
-- [ ] **Readable IO errors** — when an error says a file doesn't exist, tell the user *which* file it's talking about. *(Still open: `scanner.rs` line 65 just does `eprintln!("Error: {}", error)` with no filename; generic IO errors aren't wrapped with context.)*
 - [x] **TOML config** — save/load configuration as a TOML file instead of the current format. *(Still open: `config_file.rs` still reads/writes `config.json` via serde_json.)*
-- [ ] **Config keyed by namespace name** — represent namespaces as a `BTreeMap<String, String>` so each `[[namespaces]]` table becomes `[namespaces.<name>]` with just a `path` field, avoiding the duplicated `namespace` key. *(Still open: `config_file.rs` uses `Vec<Namespace>` with redundant `namespace`/`path` pairs.)*
 - [ ] **`--dry-run` flag for pull** — preview changes before pulling, since pull deletes local files. *(Still open: no such flag exists in the CLI.)*
-- [ ] **Non-full-screen TUI** — build a non-fullscreen terminal UI to edit the config. *(Still open: no TUI exists anywhere in the codebase.)*
-- [ ] **Secrets management** — use `aws-sdk-secretsmanager` (or similar) for AWS and DB credentials instead of env vars. *(Still open: `Config::new()` in `sync-config/src/lib.rs` reads all secrets straight from environment variables.)*
-- [x] **Input validation** — figure out how to verify inputs; currently done rarely. *(Still open: `main.rs` line 29 has a placeholder comment "verify paths and expand them etc" but no implementation.)*
 - [ ] Create different errors for each crate
 
 ---
 
 ## Critical: Fix Before Publishing to GitHub
 
-- [ ] **`.env` committed to git** — despite being listed in `.gitignore`, the `.env` file is already tracked (committed in `f9310b3` and earlier). The `.gitignore` rule is ineffective once a file is tracked. Fix: `git rm --cached .env` to untrack it while keeping the local file. *(Verified: `git ls-files` shows `.env` is tracked.)*
+- [x] **`.env` committed to git** — despite being listed in `.gitignore`, the `.env` file is already tracked (committed in `f9310b3` and earlier). The `.gitignore` rule is ineffective once a file is tracked. Fix: `git rm --cached .env` to untrack it while keeping the local file. *(Verified: `git ls-files` shows `.env` is tracked.)*
 - [x] **First-run config crash** — `config_file.rs:98-100` created an empty config file with `File::create()`, then `Config::new()` (lines 51-59) failed to parse the empty content via `toml::from_str`. On a fresh system the app was unusable — the `add` subcommand was never reachable because `Sync::new()` fails first. *(Fixed: `config_file.rs` now writes default config content when creating the file.)*
-- [ ] **`unwrap()` panic on missing env var** — `s3.rs:52` does `env::var("AWS_DEFAULT_REGION").unwrap()` which panics in production if the variable isn't set. Should return `Result` or fall back to `GLOBAL_REGION`.
+- [x] **`unwrap()` panic on missing env var** — `s3.rs:52` does `env::var("AWS_DEFAULT_REGION").unwrap()` which panics in production if the variable isn't set. Should return `Result` or fall back to `GLOBAL_REGION`.
 - [x] **Silently swallowed walkdir errors** — `scan_files.rs` previously used `.filter_map(|e| e.ok())` which silently discarded all `WalkDir` errors (permission denied, broken symlinks, I/O errors). Files in unreadable directories were silently skipped → data loss on push, stale files on pull. *(Fixed: `scan()` now propagates the first `WalkDir` error via `?`.)*
 - [ ] **Add CI/CD pipeline** — no `.github/workflows/` exists. Add GitHub Actions to run `cargo fmt --check`, `cargo clippy`, and `tests.sh` on push/PR.
 - [ ] **Add LICENSE file** — no LICENSE exists anywhere in the repo. Without one, GitHub flags the repo and others legally can't use the code. MIT recommended for personal projects.
@@ -31,11 +26,10 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/` and co
 ## Optimization: Performance
 
 - [x] **Double directory traversal** — `scan_files.rs:60-75` walks the entire tree once with `WalkDir::new(&self.scan_path)` to collect all dirs, then walks each dir *again* with `max_depth(1)` in `scan_folder()`. Every directory is visited twice. Fix: single `WalkDir` pass collecting files directly.
-- [ ] **Quadratic diff logic** — `diff.rs:52-56` and `diff.rs:110-113` use `.contains()`/`.any()` on `Vec`s inside loops → O(n*m). Fix: use `HashSet` (a `local_index` HashMap is already built at `diff.rs:74` — reuse it instead of rebuilding/looking up per-file).
-- [ ] **`download_object` buffers entire file in memory** — `s3.rs:154` does `response.body.collect().await?.into_bytes()` before writing to disk. For large files this is a memory concern, especially on mobile (the stated target). Fix: stream the body directly to a file via `AsyncWriteExt`.
-- [ ] **Unnecessary cloning in diff** — `diff.rs:31,34` clone each `LocalFile` (including `PathBuf` + `Option<blake3::Hash>`) on every push/pull decision; `diff.rs:74` clones every path building `local_index`. Consider using references / `Arc` or restructuring to avoid the allocations.
-- [ ] **`list_buckets()` used for existence check** — `s3.rs:66-80` lists ALL buckets and matches by name. Fix: use `head_bucket()` (single request) for existence checks.
-- [ ] **`max_connections(5)` hardcoded** — `db.rs:30`. Should be configurable.
+- [x] **Quadratic diff logic** — `diff.rs:52-56` and `diff.rs:110-113` use `.contains()`/`.any()` on `Vec`s inside loops → O(n*m). Fix: use `HashSet` (a `local_index` HashMap is already built at `diff.rs:74` — reuse it instead of rebuilding/looking up per-file).
+- [x] **`download_object` buffers entire file in memory** — `s3.rs:154` does `response.body.collect().await?.into_bytes()` before writing to disk. For large files this is a memory concern, especially on mobile (the stated target). Fix: stream the body directly to a file via `AsyncWriteExt`.
+- [x] **`list_buckets()` used for existence check** — `s3.rs:66-80` lists ALL buckets and matches by name. Fix: use `head_bucket()` (single request) for existence checks.
+- [x] **`max_connections(5)` hardcoded** — `db.rs:30`. Should be configurable.
 
 ---
 
@@ -45,7 +39,6 @@ A consolidated list of todos gathered from the daily logs in `docs/logs/` and co
 - [ ] **DB keyed by path → rename/move problem** — because the DB map is keyed by path, renaming or moving a folder makes it look brand new (new UUID) and gets re-uploaded under a new ID. Fix with content hashing: use something cheap to store in the database so renamed files can be matched by identical hashes. *(Still open: `File` has no hash column; `files_to_upload` matches purely on path (`sync.rs` line 200).)*
 - [ ] **Bucket state not consulted** — cloud state is really just "what the DB thinks is in the cloud." If an object is deleted from S3 but the DB row still exists, it's treated as up-to-date and skipped. The bucket should actually be consulted. *(Still open: `push`/`pull` only ever read from the DB; S3 contents are never queried during sync.)*
 - [ ] **Partial sync on failure** — if push or pull fails mid-loop, you end up in a partially-synced state. Handle this gracefully (e.g., atomic commits / rollback). *(Still open: `push`/`pull` use `?` and don't roll back partial writes/deletes.)*
-- [ ] **Large file downloads** — `download_object` reads everything into memory; stream to disk instead for large files. *(Still open: `s3.rs` line 128 does `response.body.collect().await?.into_bytes()` before writing to disk.)*
 - [ ] Figure out how to store the database values that i keep calling over and over again
 
 ---
