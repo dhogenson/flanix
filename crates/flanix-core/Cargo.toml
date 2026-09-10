@@ -1,12 +1,12 @@
 [package]
-name = "sync-core"
+name = "flanix-core"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-sync-errors = { path = "../sync-errors" }
-sync-config = { path = "../sync-config" }
-sync-indexing = { path = "../sync-indexing" }
+flanix-errors = { path = "../flanix-errors" }
+flanix-config = { path = "../flanix-config" }
+flanix-indexing = { path = "../flanix-indexing" }
 chrono.workspace = true
 tokio.workspace = true
 uuid.workspace = true
@@ -20,5 +20,4 @@ tempfile = "3.27.0"
 anyhow.workspace = true
 
 [lib]
-name = "sync_core"
 path = "src/lib.rs"

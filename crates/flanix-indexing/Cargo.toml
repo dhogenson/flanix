@@ -1,5 +1,5 @@
 [package]
-name = "sync-indexing"
+name = "flanix-indexing"
 version.workspace = true
 edition.workspace = true
 

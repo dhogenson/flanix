@@ -1,5 +1,5 @@
 [package]
-name = "sync-errors"
+name = "flanix-errors"
 version.workspace = true
 edition.workspace = true
 

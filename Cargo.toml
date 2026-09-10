@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/sync-core",
-    "crates/sync-cli",
-    "crates/sync-config",
-    "crates/sync-errors",
-    "crates/sync-indexing"
+    "crates/flanix-core",
+    "crates/flanix-cli",
+    "crates/flanix-config",
+    "crates/flanix-errors",
+    "crates/flanix-indexing"
 ]
 
 [workspace.package]

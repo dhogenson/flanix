@@ -8,7 +8,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "sync-core",
+ "flanix-core",
  "tokio",
 ]
 
@@ -1139,6 +1139,58 @@ name = "find-msvc-tools"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26b73573e6edcd2af0cdf47bd6cb58f0b3839491263c314eaad1ccf24430e1de"
+
+[[package]]
+name = "flanix-config"
+version = "0.1.0"
+dependencies = [
+ "directories",
+ "flanix-errors",
+ "serde",
+ "toml",
+]
+
+[[package]]
+name = "flanix-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aws-config",
+ "aws-sdk-s3",
+ "chrono",
+ "flanix-config",
+ "flanix-errors",
+ "flanix-indexing",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "flanix-errors"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aws-sdk-s3",
+ "glob",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "flanix-indexing"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "chrono",
+ "tempfile",
+ "walkdir",
+]
 
 [[package]]
 name = "flume"
@@ -2872,58 +2924,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "sync-config"
-version = "0.1.0"
-dependencies = [
- "directories",
- "serde",
- "sync-errors",
- "toml",
-]
-
-[[package]]
-name = "sync-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aws-config",
- "aws-sdk-s3",
- "chrono",
- "sqlx",
- "sync-config",
- "sync-errors",
- "sync-indexing",
- "tempfile",
- "thiserror",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "sync-errors"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aws-sdk-s3",
- "glob",
- "serde_json",
- "sqlx",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "sync-indexing"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "blake3",
- "chrono",
- "tempfile",
- "walkdir",
 ]
 
 [[package]]

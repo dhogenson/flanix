@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use sync_config::Config;
-use sync_core::Bucket;
+use flanix_core::Bucket;
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 

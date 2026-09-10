@@ -9,7 +9,7 @@ authors = ["Dallin Hogenson <dallin.hogenson@icloud.com"]
 description = "A syncing program"
 
 [dependencies]
-sync-core = { path = "../sync-core" }
+flanix-core = { path = "../flanix-core" }
 tokio.workspace = true
 anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }

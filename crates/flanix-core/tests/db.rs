@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use sqlx::Row;
-use sync_core::Database;
+use flanix_core::Database;
 use uuid::Uuid;
 
 #[sqlx::test]

@@ -2,14 +2,14 @@ mod verify_inputs;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use flanix_core::Sync;
 use std::fs;
-use sync_core::Sync;
 use verify_inputs::validate_namespace;
 
 use crate::verify_inputs::validate_path;
 
 #[derive(Parser)]
-#[command(name = "Sync", about = "A sync program")]
+#[command(name = "Flanix", about = "A sync program")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Functions>,

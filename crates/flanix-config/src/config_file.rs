@@ -76,7 +76,7 @@ impl Config {
     }
 
     fn get_config_file() -> Result<PathBuf, SyncError> {
-        let config_folder = match ProjectDirs::from("dev", "hogenson", "sync") {
+        let config_folder = match ProjectDirs::from("dev", "hogenson", "flanix") {
             Some(project_dirs) => PathBuf::from(project_dirs.config_dir()),
             None => {
                 return Err(SyncError::ConfigDirNotFound(

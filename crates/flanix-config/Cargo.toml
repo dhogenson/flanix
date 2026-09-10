@@ -1,10 +1,10 @@
 [package]
-name = "sync-config"
+name = "flanix-config"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-sync-errors = { path = "../sync-errors" }
+flanix-errors = { path = "../flanix-errors" }
 serde.workspace = true
 toml.workspace = true
 directories = "6.0.0"
