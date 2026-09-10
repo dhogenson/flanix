@@ -1,1 +1,1 @@
-This is the docs folder, I will keep how to use this program and the decisions i made.
+This is the docs folder, for some folders I keep it just to keep notes on how to do things

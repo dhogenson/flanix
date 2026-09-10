@@ -26,3 +26,6 @@ rustup target add aarch64-linux-android
 cargo install cargo-ndk
 cargo ndk -t arm64-v8a build --release
 ```
+
+# Docs
+See `docs/`
