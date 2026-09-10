@@ -2,11 +2,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use sync_errors::SyncError;
 
-use std::{
-    fs::{self, File},
-    io::{BufWriter, Write},
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Namespace {
@@ -73,12 +69,8 @@ impl Config {
         self.namespaces
             .push(Namespace::new(namespace.to_string(), path));
 
-        let toml_string = toml::to_string_pretty(self)?;
-        let config_file = Self::get_config_file()?;
-        let file = File::create(config_file)?;
-        let mut writer = BufWriter::new(file);
-
-        write!(writer, "{}", toml_string)?;
+        let config_path = Self::get_config_file()?;
+        Self::write_config(&config_path, self)?;
 
         Ok(())
     }
@@ -98,14 +90,19 @@ impl Config {
         let config_file = config_folder.join(PathBuf::from("config.toml"));
 
         if !config_file.exists() {
-            let toml_string = toml::to_string_pretty(&Config::default())?;
-            let file = File::create(&config_file)?;
-            let mut writer = BufWriter::new(file);
-
-            write!(writer, "{}", toml_string)?;
-            writer.flush()?;
+            Self::write_config(&config_file, &Config::default())?;
         }
 
         Ok(config_file)
+    }
+
+    fn write_config(path: &PathBuf, config: &Config) -> Result<(), SyncError> {
+        let toml_string = toml::to_string_pretty(config)?;
+        let tmp_path = path.with_extension("toml.tmp");
+
+        fs::write(&tmp_path, &toml_string)?;
+        fs::rename(&tmp_path, path)?;
+
+        Ok(())
     }
 }

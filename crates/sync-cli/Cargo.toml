@@ -1,7 +1,12 @@
 [package]
-name = "sync-cli"
+name = "Flanix"
 version.workspace = true
 edition.workspace = true
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/dhogenson/sync"
+authors = ["Dallin Hogenson <dallin.hogenson@icloud.com"]
+description = "A syncing program"
 
 [dependencies]
 sync-core = { path = "../sync-core" }

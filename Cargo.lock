@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "Flanix"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "sync-core",
+ "tokio",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2862,16 +2872,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "sync-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "sync-core",
- "tokio",
 ]
 
 [[package]]
