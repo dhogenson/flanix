@@ -1,3 +1,5 @@
+**NOTE:** This is a in dev project, some things might break, and it might be slow
+
 # Flanix
 
 Flanix is a syncing program made in rust. I took inspiration from how syncthing could sync folders of your choice, but making it sync to the cloud instead of making it node based. And one other thing I plan to solve is too make this run on phones to (android can but it does not have a app) 
