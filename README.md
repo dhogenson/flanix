@@ -33,6 +33,7 @@ cargo ndk -t arm64-v8a build --release
 
 # Docs
 See `docs/`
+For quick start see `docs/quick-start.md`
 
 # License
 MIT
