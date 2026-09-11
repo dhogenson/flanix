@@ -6,6 +6,7 @@ use aws_credential_types::{
 };
 use aws_sdk_s3::{
     Client,
+    config::Builder as S3ConfigBuilder,
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
@@ -13,7 +14,6 @@ use sync_config::Config;
 
 const GLOBAL_REGION: &str = "us-east-1";
 
-use std::path::Path;
 use uuid::Uuid;
 
 pub struct Bucket {
@@ -23,6 +23,13 @@ pub struct Bucket {
 }
 
 impl Bucket {
+    /// S3-compatible services that don't support virtual-host (bucket.fqdn)
+    /// addressing (e.g. Garage) require path-style requests like
+    /// `/<bucket>/<key>`, so disable virtual-host addressing.
+    fn client_config(config_builder: S3ConfigBuilder) -> S3ConfigBuilder {
+        config_builder.force_path_style(true)
+    }
+
     pub async fn new(config: &Config) -> Self {
         let sdk_config = aws_config::defaults(BehaviorVersion::latest())
             .region(aws_config::Region::new(config.aws_default_region.clone()))
@@ -33,42 +40,49 @@ impl Bucket {
         // Prefer the AWS SDK credential chain (environment, profiles, IAM
         // roles, etc.). Keep config-file credentials as a fallback for local
         // development and existing configs.
-        let sdk_config = if let Some(provider) = sdk_config.credentials_provider() {
-            if provider.provide_credentials().await.is_ok() {
-                sdk_config
-            } else if !config.aws_access_key_id.is_empty()
-                && !config.aws_secret_access_key.is_empty()
-            {
-                sdk_config
-                    .to_builder()
-                    .credentials_provider(SharedCredentialsProvider::new(Credentials::new(
-                        config.aws_access_key_id.clone(),
-                        config.aws_secret_access_key.clone(),
-                        None,
-                        None,
-                        "flanix-config",
-                    )))
-                    .build()
-            } else {
-                sdk_config
+        let fallback_credentials = (!config.aws_access_key_id.is_empty()
+            && !config.aws_secret_access_key.is_empty())
+        .then(|| {
+            SharedCredentialsProvider::new(Credentials::new(
+                config.aws_access_key_id.clone(),
+                config.aws_secret_access_key.clone(),
+                None,
+                None,
+                "flanix-config",
+            ))
+        });
+
+        let credentials = match sdk_config.credentials_provider() {
+            Some(provider) => {
+                if provider.provide_credentials().await.is_ok() {
+                    None
+                } else {
+                    fallback_credentials
+                }
             }
-        } else {
-            sdk_config
+            None => fallback_credentials,
         };
+        let mut config_builder = Self::client_config(S3ConfigBuilder::from(&sdk_config));
+        if let Some(credentials) = credentials {
+            config_builder = config_builder.credentials_provider(credentials);
+        }
         Self {
             name: config.bucket_name.clone(),
             location: config.aws_default_region.clone(),
-            client: Client::new(&sdk_config),
+            client: Client::from_conf(config_builder.build()),
         }
     }
 
     pub async fn from_env_vars(bucket_name: &str) -> Result<Self, SyncError> {
         use std::env;
-        let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+        let config = Self::client_config(S3ConfigBuilder::from(
+            &aws_config::load_defaults(BehaviorVersion::latest()).await,
+        ))
+        .build();
         Ok(Self {
             name: bucket_name.to_string(),
             location: env::var("AWS_DEFAULT_REGION")?,
-            client: Client::new(&config),
+            client: Client::from_conf(config),
         })
     }
 
@@ -118,12 +132,15 @@ impl Bucket {
     }
 
     pub async fn upload_object(&self, uuid: Uuid, file_path: &str) -> Result<(), SyncError> {
-        let file = ByteStream::from_path(Path::new(file_path)).await?;
+        // Buffer the file so the body has a known length. The SDK otherwise
+        // signs streaming bodies with `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`,
+        // which Garage rejects with "Invalid payload signature".
+        let bytes = tokio::fs::read(file_path).await?;
         self.client
             .put_object()
             .bucket(&self.name)
             .key(uuid)
-            .body(file)
+            .body(ByteStream::from(bytes))
             .send()
             .await?;
 
