@@ -15,7 +15,6 @@ use crate::verify_inputs::validate_path;
     about = "A sync program",
     arg_required_else_help = true
 )]
-
 struct Cli {
     #[command(subcommand)]
     command: Option<Functions>,
