@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-walkdir = "2.5.0"
+jwalk = "0.9.0"
 chrono.workspace = true
 blake3.workspace = true
 

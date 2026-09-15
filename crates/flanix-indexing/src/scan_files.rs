@@ -5,7 +5,7 @@ use std::io::{BufReader, Read};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
-use walkdir::WalkDir;
+use jwalk::WalkDir;
 
 pub struct Indexer {
     scan_path: PathBuf,
