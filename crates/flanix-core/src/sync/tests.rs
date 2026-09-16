@@ -9,7 +9,7 @@ use tempfile::TempDir;
 
 // Scan a directory with the indexing crate, returning relative paths.
 fn local_files(dir: &TempDir) -> Result<Vec<LocalFile>> {
-    Ok(Indexer::new(dir.path().to_path_buf()).scan()?)
+    Indexer::new(dir.path().to_path_buf()).scan()
 }
 
 // Build a Sync wired to the isolated #[sqlx::test] database. The bucket is
@@ -47,7 +47,7 @@ async fn insert_cloud_file(
          VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(Uuid::new_v4())
-    .bind(Uuid::new_v4())
+    .bind("test-bucket-key")
     .bind(local_path)
     .bind(modified_at)
     .bind(namespace_id)

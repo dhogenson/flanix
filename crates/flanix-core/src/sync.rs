@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use crate::Bucket;
 use crate::Config;
 use crate::Database;
+use crate::bucket_key;
 use crate::errors::SyncError;
 use sync_indexing::Indexer;
 use sync_indexing::LocalFile;
@@ -59,7 +60,7 @@ impl Sync {
         struct UploadTarget {
             file: LocalFile,
             full_path: PathBuf,
-            bucket_key: Uuid,
+            bucket_key: String,
             is_new: bool,
         }
 
@@ -70,14 +71,8 @@ impl Sync {
             let full_path = PathBuf::from(&path).join(&file.file_path);
             let path_str = file.file_path.to_string_lossy();
 
-            let (bucket_key, is_new) = match self
-                .database
-                .bucket_key_for_path_opt(&namespace, &path_str)
-                .await?
-            {
-                Some(bucket_key) => (bucket_key, false),
-                None => (Uuid::new_v4(), true),
-            };
+            let bucket_key = bucket_key(&namespace, &path_str);
+            let is_new = !self.database.file_exists(namespace_id, &path_str).await?;
 
             uploads.push(UploadTarget {
                 file,
@@ -89,21 +84,18 @@ impl Sync {
 
         let mut deletes = Vec::with_capacity(files_to_delete.len());
         for file in files_to_delete {
-            let object_key = self
-                .database
-                .bucket_key_for_path(&namespace, &file.to_string_lossy())
-                .await?;
+            let object_key = bucket_key(&namespace, &file.to_string_lossy());
             deletes.push((file, object_key));
         }
 
         for target in &uploads {
             self.bucket
-                .upload_object(target.bucket_key, &target.full_path.to_string_lossy())
+                .upload_object(&target.bucket_key, &target.full_path.to_string_lossy())
                 .await?;
         }
 
         for (_, object_key) in &deletes {
-            self.bucket.delete_object(*object_key).await?;
+            self.bucket.delete_object(object_key).await?;
         }
 
         // Phase 2: record the result in the DB as a single transaction, so the
@@ -118,7 +110,7 @@ impl Sync {
                     .add_file(
                         &mut *tx,
                         Uuid::new_v4(),
-                        target.bucket_key,
+                        &target.bucket_key,
                         &path_str,
                         target.file.modified_time,
                         namespace_id,
@@ -169,10 +161,7 @@ impl Sync {
         for file in files_to_download {
             let path_str = file.to_string_lossy().to_string();
 
-            let bucket_key = self
-                .database
-                .bucket_key_for_path(&namespace, &path_str)
-                .await?;
+            let bucket_key = bucket_key(&namespace, &path_str);
 
             let modified_at = self
                 .database
@@ -186,7 +175,7 @@ impl Sync {
             }
 
             self.bucket
-                .download_object(bucket_key, &full_path.to_string_lossy())
+                .download_object(&bucket_key, &full_path.to_string_lossy())
                 .await?;
 
             std::fs::File::open(&full_path)?.set_modified(modified_at.into())?;

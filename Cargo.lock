@@ -1180,6 +1180,7 @@ dependencies = [
  "aws-config",
  "aws-credential-types",
  "aws-sdk-s3",
+ "blake3",
  "chrono",
  "flanix-config",
  "flanix-errors",

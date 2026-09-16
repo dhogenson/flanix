@@ -15,6 +15,7 @@ thiserror.workspace = true
 aws-sdk-s3.workspace = true
 sqlx.workspace = true
 aws-config = "1.10.1"
+blake3.workspace = true
 
 [dev-dependencies]
 tempfile = "3.27.0"

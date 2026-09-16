@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, sqlx::FromRow)]
 pub struct File {
     pub id: Uuid,
-    pub bucket_key: Uuid,
+    pub bucket_key: String,
     pub local_path: String,
     pub modified_at: DateTime<Utc>,
     pub namespace_id: Uuid,
@@ -50,7 +50,7 @@ impl Database {
         &self,
         executor: impl PgExecutor<'_>,
         uuid: Uuid,
-        bucket_key: Uuid,
+        bucket_key: &str,
         local_path: &str,
         modified_at: DateTime<Utc>,
         namespace_id: Uuid,
@@ -136,33 +136,16 @@ impl Database {
         Ok(files)
     }
 
-    pub async fn bucket_key_for_path_opt(
-        &self,
-        namespace: &str,
-        path: &str,
-    ) -> Result<Option<Uuid>, DbError> {
-        let namespace_id = self.get_namespace_id(namespace).await?;
-
-        let file = sqlx::query_scalar(
-            "SELECT bucket_key FROM files WHERE namespace_id = $1 AND local_path = $2",
+    pub async fn file_exists(&self, namespace_id: Uuid, local_path: &str) -> Result<bool, DbError> {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM files WHERE namespace_id = $1 AND local_path = $2) AS value_exists",
         )
         .bind(namespace_id)
-        .bind(path)
-        .fetch_optional(&self.pool)
+        .bind(local_path)
+        .fetch_one(&self.pool)
         .await?;
 
-        Ok(file)
-    }
-
-    pub async fn bucket_key_for_path(&self, namespace: &str, path: &str) -> Result<Uuid, DbError> {
-        self.bucket_key_for_path_opt(namespace, path)
-            .await?
-            .ok_or_else(|| {
-                DbError::NotFound(format!(
-                    "no file '{}' tracked in namespace '{}'",
-                    path, namespace
-                ))
-            })
+        Ok(exists)
     }
 
     /// Returns the cloud-side modification time recorded for a file path,

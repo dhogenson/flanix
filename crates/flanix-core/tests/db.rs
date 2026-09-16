@@ -29,7 +29,7 @@ async fn test_add_file(pool: PgPool) -> Result<()> {
     let modified_at: DateTime<Utc> = tokio::fs::metadata(&local_path).await?.modified()?.into();
 
     let uuid = Uuid::new_v4();
-    let bucket_key = Uuid::new_v4();
+    let bucket_key = "some-bucket-key";
     let namespace_id = Uuid::new_v4();
 
     database.create_namespace(namespace_id, "test").await?;

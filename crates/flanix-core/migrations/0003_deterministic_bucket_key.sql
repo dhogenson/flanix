@@ -1,0 +1,1 @@
+ALTER TABLE files ALTER COLUMN bucket_key TYPE TEXT USING bucket_key::text;

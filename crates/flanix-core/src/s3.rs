@@ -14,7 +14,13 @@ use sync_config::Config;
 
 const GLOBAL_REGION: &str = "us-east-1";
 
-use uuid::Uuid;
+pub fn bucket_key(namespace: &str, path: &str) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(namespace.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(path.as_bytes());
+    hasher.finalize().to_hex().to_string()
+}
 
 pub struct Bucket {
     pub name: String,
@@ -131,7 +137,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn upload_object(&self, uuid: Uuid, file_path: &str) -> Result<(), SyncError> {
+    pub async fn upload_object(&self, key: &str, file_path: &str) -> Result<(), SyncError> {
         // Buffer the file so the body has a known length. The SDK otherwise
         // signs streaming bodies with `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`,
         // which Garage rejects with "Invalid payload signature".
@@ -139,7 +145,7 @@ impl Bucket {
         self.client
             .put_object()
             .bucket(&self.name)
-            .key(uuid)
+            .key(key)
             .body(ByteStream::from(bytes))
             .send()
             .await?;
@@ -147,7 +153,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn object_exists(&self, key: Uuid) -> Result<bool, SyncError> {
+    pub async fn object_exists(&self, key: &str) -> Result<bool, SyncError> {
         match self
             .client
             .head_object()
@@ -169,7 +175,7 @@ impl Bucket {
         }
     }
 
-    pub async fn delete_object(&self, key: Uuid) -> Result<(), SyncError> {
+    pub async fn delete_object(&self, key: &str) -> Result<(), SyncError> {
         self.client
             .delete_object()
             .key(key)
@@ -180,7 +186,7 @@ impl Bucket {
         Ok(())
     }
 
-    pub async fn download_object(&self, key: Uuid, path: &str) -> Result<(), SyncError> {
+    pub async fn download_object(&self, key: &str, path: &str) -> Result<(), SyncError> {
         let response = self
             .client
             .get_object()

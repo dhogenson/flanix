@@ -4,7 +4,6 @@ use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use sync_config::Config;
 use tempfile::NamedTempFile;
-use uuid::Uuid;
 
 fn unique_bucket_name() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -14,10 +13,11 @@ fn unique_bucket_name() -> String {
 
 #[allow(dead_code)]
 fn test_config(bucket_name: String) -> Config {
-    let mut config = Config::default();
-    config.bucket_name = bucket_name;
-    config.aws_default_region = "us-west-2".to_string();
-    config
+    Config {
+        bucket_name,
+        aws_default_region: "us-west-2".to_string(),
+        ..Default::default()
+    }
 }
 
 // Also tests for the bucket exists function
@@ -47,15 +47,15 @@ async fn test_upload_object() -> Result<()> {
     let bucket = Bucket::from_env_vars(&unique_bucket_name()).await?;
 
     bucket.init().await?;
-    let uuid = Uuid::new_v4();
+    let key = "test-key";
     let mut file = NamedTempFile::new()?;
     write!(file, "this is a fake file")?;
 
     bucket
-        .upload_object(uuid, &file.path().to_string_lossy())
+        .upload_object(key, &file.path().to_string_lossy())
         .await?;
 
-    assert!(bucket.object_exists(uuid).await?);
+    assert!(bucket.object_exists(key).await?);
 
     Ok(())
 }
