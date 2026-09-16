@@ -1,6 +1,6 @@
 use crate::errors::DbError;
 use chrono::{DateTime, TimeDelta, Utc};
-use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use sqlx::{Pool, Postgres, PgExecutor, postgres::PgPoolOptions};
 use uuid::Uuid;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -42,8 +42,13 @@ impl Database {
         Ok(())
     }
 
+    pub async fn begin(&self) -> Result<sqlx::Transaction<'_, Postgres>, DbError> {
+        Ok(self.pool.begin().await?)
+    }
+
     pub async fn add_file(
         &self,
+        executor: impl PgExecutor<'_>,
         uuid: Uuid,
         bucket_key: Uuid,
         local_path: &str,
@@ -65,7 +70,7 @@ impl Database {
         .bind(local_path)
         .bind(modified_at)
         .bind(namespace_id)
-        .execute(&self.pool)
+        .execute(executor)
         .await?;
 
         Ok(())
@@ -105,13 +110,16 @@ impl Database {
         Ok(uuid)
     }
 
-    pub async fn delete_file(&self, namespace: &str, local_path: &str) -> Result<(), DbError> {
-        let namespace_id = self.get_namespace_id(namespace).await?;
-
+    pub async fn delete_file(
+        &self,
+        executor: impl PgExecutor<'_>,
+        namespace_id: Uuid,
+        local_path: &str,
+    ) -> Result<(), DbError> {
         sqlx::query("DELETE FROM files WHERE namespace_id = $1 AND local_path = $2")
             .bind(namespace_id)
             .bind(local_path)
-            .execute(&self.pool)
+            .execute(executor)
             .await?;
 
         Ok(())
@@ -185,12 +193,11 @@ impl Database {
 
     pub async fn update_file_modified_at(
         &self,
-        namespace: &str,
+        executor: impl PgExecutor<'_>,
+        namespace_id: Uuid,
         local_path: &str,
         modified_at: DateTime<Utc>,
     ) -> Result<(), DbError> {
-        let namespace_id = self.get_namespace_id(namespace).await?;
-
         let modified_at = truncate_to_micros(modified_at);
 
         sqlx::query(
@@ -199,7 +206,7 @@ impl Database {
         .bind(modified_at)
         .bind(namespace_id)
         .bind(local_path)
-        .execute(&self.pool)
+        .execute(executor)
         .await?;
 
         Ok(())

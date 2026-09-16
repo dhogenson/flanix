@@ -12,6 +12,7 @@ use crate::Config;
 use crate::Database;
 use crate::errors::SyncError;
 use sync_indexing::Indexer;
+use sync_indexing::LocalFile;
 use uuid::Uuid;
 
 pub struct Sync {
@@ -55,55 +56,93 @@ impl Sync {
 
         let files_to_delete = self.files_to_delete(&namespace, &local_files).await?;
 
+        struct UploadTarget {
+            file: LocalFile,
+            full_path: PathBuf,
+            bucket_key: Uuid,
+            is_new: bool,
+        }
+
+        let mut uploads = Vec::with_capacity(files.len());
         for file in files {
             // scan_files returns paths relative to the pushed folder, so join
             // the folder back on to read the actual file from disk.
             let full_path = PathBuf::from(&path).join(&file.file_path);
+            let path_str = file.file_path.to_string_lossy();
 
-            if let Some(bucket_key) = self
+            let (bucket_key, is_new) = match self
                 .database
-                .bucket_key_for_path_opt(&namespace, &file.file_path.to_string_lossy())
+                .bucket_key_for_path_opt(&namespace, &path_str)
                 .await?
             {
-                self.bucket
-                    .upload_object(bucket_key, &full_path.to_string_lossy())
-                    .await?;
-                self.database
-                    .update_file_modified_at(
-                        &namespace,
-                        &file.file_path.to_string_lossy(),
-                        file.modified_time,
-                    )
-                    .await?;
-            } else {
-                let bucket_key = Uuid::new_v4();
-                let file_uuid = Uuid::new_v4();
+                Some(bucket_key) => (bucket_key, false),
+                None => (Uuid::new_v4(), true),
+            };
 
-                self.bucket
-                    .upload_object(bucket_key, &full_path.to_string_lossy())
-                    .await?;
-                self.database
-                    .add_file(
-                        file_uuid,
-                        bucket_key,
-                        &file.file_path.to_string_lossy(),
-                        file.modified_time,
-                        namespace_id,
-                    )
-                    .await?;
-            }
+            uploads.push(UploadTarget {
+                file,
+                full_path,
+                bucket_key,
+                is_new,
+            });
         }
 
+        let mut deletes = Vec::with_capacity(files_to_delete.len());
         for file in files_to_delete {
             let object_key = self
                 .database
                 .bucket_key_for_path(&namespace, &file.to_string_lossy())
                 .await?;
-            self.bucket.delete_object(object_key).await?;
-            self.database
-                .delete_file(&namespace, &file.to_string_lossy())
+            deletes.push((file, object_key));
+        }
+
+        for target in &uploads {
+            self.bucket
+                .upload_object(target.bucket_key, &target.full_path.to_string_lossy())
                 .await?;
         }
+
+        for (_, object_key) in &deletes {
+            self.bucket.delete_object(*object_key).await?;
+        }
+
+        // Phase 2: record the result in the DB as a single transaction, so the
+        // ledger is either fully updated or not changed at all.
+        let mut tx = self.database.begin().await?;
+
+        for target in uploads {
+            let path_str = target.file.file_path.to_string_lossy();
+
+            if target.is_new {
+                self.database
+                    .add_file(
+                        &mut *tx,
+                        Uuid::new_v4(),
+                        target.bucket_key,
+                        &path_str,
+                        target.file.modified_time,
+                        namespace_id,
+                    )
+                    .await?;
+            } else {
+                self.database
+                    .update_file_modified_at(
+                        &mut *tx,
+                        namespace_id,
+                        &path_str,
+                        target.file.modified_time,
+                    )
+                    .await?;
+            }
+        }
+
+        for (file, _) in deletes {
+            self.database
+                .delete_file(&mut *tx, namespace_id, &file.to_string_lossy())
+                .await?;
+        }
+
+        tx.commit().await.map_err(crate::errors::DbError::Sqlx)?;
 
         Ok(())
     }

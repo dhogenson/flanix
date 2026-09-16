@@ -36,6 +36,7 @@ async fn test_add_file(pool: PgPool) -> Result<()> {
 
     database
         .add_file(
+            &database.pool,
             uuid,
             bucket_key,
             &local_path.to_string_lossy(),
