@@ -2,9 +2,9 @@ use crate::Sync;
 use crate::db::truncate_to_micros;
 use crate::errors::SyncError;
 use chrono::{DateTime, Utc};
+use flanix_indexing::LocalFile;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use sync_indexing::LocalFile;
 
 impl Sync {
     pub(crate) async fn files_to_upload(

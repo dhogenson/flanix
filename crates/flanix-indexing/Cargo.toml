@@ -14,5 +14,5 @@ tempfile = "3.27.0"
 anyhow.workspace = true
 
 [lib]
-name = "sync_indexing"
+name = "flanix_indexing"
 path = "src/lib.rs"

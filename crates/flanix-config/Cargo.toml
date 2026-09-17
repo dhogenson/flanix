@@ -10,5 +10,5 @@ toml.workspace = true
 directories = "6.0.0"
 
 [lib]
-name = "sync_config"
+name = "flanix_config"
 path = "src/lib.rs"

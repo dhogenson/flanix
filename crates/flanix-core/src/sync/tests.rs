@@ -2,9 +2,9 @@ use super::*;
 use crate::db::truncate_to_micros;
 use anyhow::Result;
 use chrono::{DateTime, TimeDelta, Utc};
+use flanix_indexing::LocalFile;
 use sqlx::PgPool;
 use std::fs;
-use sync_indexing::LocalFile;
 use tempfile::TempDir;
 
 // Scan a directory with the indexing crate, returning relative paths.

@@ -8,12 +8,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::Bucket;
-use crate::Config;
 use crate::Database;
 use crate::bucket_key;
 use crate::errors::SyncError;
-use sync_indexing::Indexer;
-use sync_indexing::LocalFile;
+use flanix_config::Config;
+use flanix_indexing::{Indexer, LocalFile};
 use uuid::Uuid;
 
 pub struct Sync {
@@ -23,8 +22,7 @@ pub struct Sync {
 }
 
 impl Sync {
-    pub async fn new() -> Result<Self, SyncError> {
-        let config = Config::new()?;
+    pub async fn new(config: Config) -> Result<Self, SyncError> {
         let mut database = Database::new(&config.database_url).await?;
         let bucket = Bucket::new(&config).await;
         database.init().await?;

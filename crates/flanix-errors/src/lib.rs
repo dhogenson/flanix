@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-/// Database error returned by sync-core
+/// Database error returned by flanix-core
 #[derive(Error, Debug)]
 pub enum DbError {
     #[error("io error: {0}")]
@@ -16,7 +16,7 @@ pub enum DbError {
     NotFound(String),
 }
 
-/// The single error type returned by the `sync-core` library.
+/// The single error type returned by the `flanix-core` library.
 ///
 /// The binary and tests may convert this into `anyhow::Error` for ergonomic
 /// top-level handling.

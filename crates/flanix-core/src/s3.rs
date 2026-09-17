@@ -10,7 +10,7 @@ use aws_sdk_s3::{
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
-use sync_config::Config;
+use flanix_config::Config;
 
 const GLOBAL_REGION: &str = "us-east-1";
 

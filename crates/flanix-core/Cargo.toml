@@ -18,8 +18,10 @@ aws-config = "1.10.1"
 blake3.workspace = true
 
 [dev-dependencies]
+flanix-errors = { path = "../flanix-errors" }
 tempfile = "3.27.0"
 anyhow.workspace = true
 
 [lib]
+name = "flanix_core"
 path = "src/lib.rs"

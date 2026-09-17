@@ -10,6 +10,7 @@ description = "A syncing program"
 
 [dependencies]
 flanix-core = { path = "../flanix-core" }
+flanix-config = { path = "../flanix-config" }
 tokio.workspace = true
 anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }

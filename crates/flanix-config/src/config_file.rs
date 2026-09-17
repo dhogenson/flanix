@@ -1,7 +1,7 @@
+use crate::user_config::make_user_config;
 use directories::ProjectDirs;
+use flanix_errors::SyncError;
 use serde::{Deserialize, Serialize};
-use sync_errors::SyncError;
-
 use std::{fs, path::PathBuf};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -91,7 +91,7 @@ impl Config {
         let config_file = config_folder.join(PathBuf::from("config.toml"));
 
         if !config_file.exists() {
-            Self::write_config(&config_file, &Config::default())?;
+            Self::write_config(&config_file, &make_user_config())?;
         }
 
         Ok(config_file)
