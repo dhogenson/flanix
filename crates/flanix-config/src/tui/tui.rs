@@ -28,7 +28,7 @@ impl App {
         let mut state = ListState::default();
         state.select(Some(0));
         Self {
-            items: vec!["Test".into(), "test2".into(), "hello".into()],
+            items: vec!["Option 1".into(), "Option 2".into(), "Option 3".into()],
             selected: state,
             exit: false,
             viewport_origin: None,

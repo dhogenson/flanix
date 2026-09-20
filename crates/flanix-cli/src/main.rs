@@ -44,18 +44,24 @@ enum Functions {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::new()?;
-    let mut sync = Sync::new(config).await?;
-    // verify paths and expand them etc
 
     let result = match cli.command {
         Functions::Add { namespace, path } => {
+            let mut sync = Sync::new(config).await?;
+            // verify paths and expand them etc
             let path = fs::canonicalize(path)?;
             sync.add(namespace, path.to_string_lossy().to_string())
                 .await
         }
         // The push function already verifies the namespace
-        Functions::Push { namespace } => sync.push(namespace).await,
-        Functions::Pull { namespace } => sync.pull(namespace).await,
+        Functions::Push { namespace } => {
+            let sync = Sync::new(config).await?;
+            sync.push(namespace).await
+        }
+        Functions::Pull { namespace } => {
+            let sync = Sync::new(config).await?;
+            sync.pull(namespace).await
+        }
         Functions::Config => {
             let mut app = App::new();
             app.run()?;
