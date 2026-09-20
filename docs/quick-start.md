@@ -75,7 +75,7 @@ Migrations are run automatically on startup.
 
 ## Configuration
 
-Flanix stores its config at `~/.config/hogenson/flanix/config.toml` (Linux). Create it if it doesn't exist:
+Flanix stores its config at `~/.config/flanix/config.toml` (Linux). Create it if it doesn't exist:
 
 ```toml
 bucket_name = "my-bucket"

@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
             sync.pull(namespace).await
         }
         Functions::Config => {
-            let mut app = App::new();
+            let mut app = App::new()?;
             app.run()?;
             Ok(())
         } // None => Ok(()),

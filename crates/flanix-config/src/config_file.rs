@@ -75,7 +75,7 @@ impl Config {
         Ok(())
     }
 
-    fn get_config_file() -> Result<PathBuf, SyncError> {
+    pub fn get_config_file() -> Result<PathBuf, SyncError> {
         let config_folder = match ProjectDirs::from("dev", "hogenson", "flanix") {
             Some(project_dirs) => PathBuf::from(project_dirs.config_dir()),
             None => {
@@ -96,7 +96,7 @@ impl Config {
         Ok(config_file)
     }
 
-    fn write_config(path: &PathBuf, config: &Config) -> Result<(), SyncError> {
+    pub fn write_config(path: &PathBuf, config: &Config) -> Result<(), SyncError> {
         let toml_string = toml::to_string_pretty(config)?;
         let tmp_path = path.with_extension("toml.tmp");
 
