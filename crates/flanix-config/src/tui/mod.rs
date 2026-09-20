@@ -1,3 +1,4 @@
-mod tui;
+mod app;
+pub mod config_selection;
 
-pub use tui::App;
+pub use app::App;

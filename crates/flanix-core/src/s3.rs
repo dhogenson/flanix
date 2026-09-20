@@ -138,15 +138,17 @@ impl Bucket {
     }
 
     pub async fn upload_object(&self, key: &str, file_path: &str) -> Result<(), SyncError> {
-        // Buffer the file so the body has a known length. The SDK otherwise
-        // signs streaming bodies with `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`,
-        // which Garage rejects with "Invalid payload signature".
-        let bytes = tokio::fs::read(file_path).await?;
+        // Stream the file from disk in chunks instead of buffering it in
+        // memory. A path-based stream reports a known content-length, so the
+        // SDK signs with `AWS4-HMAC-SHA256-PAYLOAD` rather than
+        // `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, which Garage rejects with
+        // "Invalid payload signature".
+        let body = ByteStream::read_from().path(file_path).build().await?;
         self.client
             .put_object()
             .bucket(&self.name)
             .key(key)
-            .body(ByteStream::from(bytes))
+            .body(body)
             .send()
             .await?;
 

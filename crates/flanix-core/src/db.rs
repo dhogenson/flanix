@@ -1,6 +1,6 @@
 use crate::errors::DbError;
 use chrono::{DateTime, TimeDelta, Utc};
-use sqlx::{Pool, Postgres, PgExecutor, postgres::PgPoolOptions};
+use sqlx::{PgExecutor, Pool, Postgres, postgres::PgPoolOptions};
 use uuid::Uuid;
 
 #[derive(Debug, sqlx::FromRow)]
