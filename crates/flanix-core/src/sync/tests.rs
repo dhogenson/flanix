@@ -5,6 +5,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use flanix_indexing::LocalFile;
 use sqlx::PgPool;
 use std::fs;
+use std::fs::File;
 use tempfile::TempDir;
 
 // Scan a directory with the indexing crate, returning relative paths.
@@ -35,7 +36,8 @@ async fn create_namespace(db: &Database, name: &str) -> Uuid {
 }
 
 // Insert a record that simulates a file already stored in the "cloud" for
-// the given namespace, with a specific modification time.
+// the given namespace, with a specific modification time. The hash matches
+// write_file's "test content", so equal-mtime files are considered up to date.
 async fn insert_cloud_file(
     db: &Database,
     local_path: &str,
@@ -43,13 +45,14 @@ async fn insert_cloud_file(
     namespace_id: Uuid,
 ) {
     sqlx::query(
-        "INSERT INTO files (id, bucket_key, local_path, modified_at, namespace_id)
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO files (id, bucket_key, local_path, modified_at, file_hash, namespace_id)
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(Uuid::new_v4())
     .bind("test-bucket-key")
     .bind(local_path)
     .bind(modified_at)
+    .bind(blake3::hash(b"test content").to_hex().to_string())
     .bind(namespace_id)
     .execute(&db.pool)
     .await
@@ -232,6 +235,35 @@ async fn mixes_upload_and_skip_decisions(pool: PgPool) -> Result<()> {
         sorted(to_upload),
         sorted(vec![PathBuf::from("new.txt"), PathBuf::from("older.txt")])
     );
+    Ok(())
+}
+
+#[sqlx::test]
+async fn re_uploads_when_content_changes_but_mtime_is_preserved(pool: PgPool) -> Result<()> {
+    let sync = test_sync(pool.clone()).await;
+    let dir = tempfile::tempdir()?;
+    let a = write_file(&dir, "a.txt")?;
+    let original_mtime = file_modified(&a)?;
+    let ns_id = create_namespace(&sync.database, "ns-same-mtime").await;
+
+    // Cloud copy matches the current content at the same mtime -> up to date.
+    insert_cloud_file(&sync.database, "a.txt", truncate_to_micros(original_mtime), ns_id).await;
+    let initial_files = local_files(&dir)?;
+    assert!(sync.files_to_upload("ns-same-mtime", &initial_files).await?.is_empty());
+
+    // Content changes but the mtime is preserved (e.g. tools that stamp it).
+    fs::write(&a, "different content")?;
+    File::open(&a)?.set_modified(original_mtime.into())?;
+
+    let local_files = local_files(&dir)?;
+    let to_upload: Vec<PathBuf> = sync
+        .files_to_upload("ns-same-mtime", &local_files)
+        .await?
+        .into_iter()
+        .map(|f| f.file_path)
+        .collect();
+
+    assert_eq!(to_upload, vec![PathBuf::from("a.txt")]);
     Ok(())
 }
 

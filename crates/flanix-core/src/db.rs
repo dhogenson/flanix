@@ -10,6 +10,7 @@ pub struct File {
     pub local_path: String,
     pub modified_at: DateTime<Utc>,
     pub namespace_id: Uuid,
+    pub file_hash: Option<String>,
 }
 
 pub struct Database {
@@ -46,6 +47,7 @@ impl Database {
         Ok(self.pool.begin().await?)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_file(
         &self,
         executor: impl PgExecutor<'_>,
@@ -53,6 +55,7 @@ impl Database {
         bucket_key: &str,
         local_path: &str,
         modified_at: DateTime<Utc>,
+        file_hash: Option<&str>,
         namespace_id: Uuid,
     ) -> Result<(), DbError> {
         // The filesystem gives nanosecond precision, but the DB column only
@@ -62,13 +65,14 @@ impl Database {
         let modified_at = truncate_to_micros(modified_at);
 
         sqlx::query(
-            "INSERT INTO files (id, bucket_key, local_path, modified_at, namespace_id)
-             VALUES ($1, $2, $3, $4, $5)",
+            "INSERT INTO files (id, bucket_key, local_path, modified_at, file_hash, namespace_id)
+             VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(uuid)
         .bind(bucket_key)
         .bind(local_path)
         .bind(modified_at)
+        .bind(file_hash)
         .bind(namespace_id)
         .execute(executor)
         .await?;
@@ -128,7 +132,7 @@ impl Database {
     pub async fn get_files(&self, namespace: &str) -> Result<Vec<File>, DbError> {
         let namespace_id = self.get_namespace_id(namespace).await?;
 
-        let files = sqlx::query_as::<_, File>("SELECT id, bucket_key, local_path, modified_at, namespace_id FROM files WHERE namespace_id = $1")
+        let files = sqlx::query_as::<_, File>("SELECT id, bucket_key, local_path, modified_at, namespace_id, file_hash FROM files WHERE namespace_id = $1")
             .bind(namespace_id)
             .fetch_all(&self.pool)
             .await?;
@@ -180,13 +184,15 @@ impl Database {
         namespace_id: Uuid,
         local_path: &str,
         modified_at: DateTime<Utc>,
+        file_hash: Option<&str>,
     ) -> Result<(), DbError> {
         let modified_at = truncate_to_micros(modified_at);
 
         sqlx::query(
-            "UPDATE files SET modified_at = $1 WHERE namespace_id = $2 AND local_path = $3",
+            "UPDATE files SET modified_at = $1, file_hash = $2 WHERE namespace_id = $3 AND local_path = $4",
         )
         .bind(modified_at)
+        .bind(file_hash)
         .bind(namespace_id)
         .bind(local_path)
         .execute(executor)

@@ -102,6 +102,7 @@ impl Sync {
 
         for target in uploads {
             let path_str = target.file.file_path.to_string_lossy();
+            let file_hash = target.file.file_hash.map(|h| h.to_hex().to_string());
 
             if target.is_new {
                 self.database
@@ -111,6 +112,7 @@ impl Sync {
                         &target.bucket_key,
                         &path_str,
                         target.file.modified_time,
+                        file_hash.as_deref(),
                         namespace_id,
                     )
                     .await?;
@@ -121,6 +123,7 @@ impl Sync {
                         namespace_id,
                         &path_str,
                         target.file.modified_time,
+                        file_hash.as_deref(),
                     )
                     .await?;
             }

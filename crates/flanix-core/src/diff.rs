@@ -14,23 +14,32 @@ impl Sync {
     ) -> Result<Vec<LocalFile>, SyncError> {
         let cloud_files = self.database.get_files(namespace).await?;
 
-        // Turn the cloud files into a index, where the key is the PathBuf and the value is the date time
-        let cloud_index: HashMap<PathBuf, DateTime<Utc>> = cloud_files
+        // Turn the cloud files into an index, where the key is the PathBuf and
+        // the value is the (date time, content hash) recorded in the DB.
+        let cloud_index: HashMap<PathBuf, (DateTime<Utc>, Option<String>)> = cloud_files
             .into_iter()
-            .map(|f| (PathBuf::from(f.local_path), f.modified_at))
+            .map(|f| (PathBuf::from(f.local_path), (f.modified_at, f.file_hash)))
             .collect();
 
         let mut to_upload = Vec::new();
 
         for local_file in local_files {
-            let local_mtime = local_file.modified_time;
-            let local_mtime = truncate_to_micros(local_mtime);
+            let local_mtime = truncate_to_micros(local_file.modified_time);
 
             match cloud_index.get(&local_file.file_path) {
                 // not in cloud at all needs uploading
                 None => to_upload.push(local_file.clone()),
                 // in cloud, but local file is newer needs re-uploading
-                Some(cloud_mtime) if local_mtime > *cloud_mtime => {
+                Some((cloud_mtime, _)) if local_mtime > *cloud_mtime => {
+                    to_upload.push(local_file.clone())
+                }
+                // same mtime, but contents differ (or the cloud copy predates
+                // content hashing) needs re-uploading
+                Some((cloud_mtime, cloud_hash))
+                    if local_mtime == *cloud_mtime
+                        && *cloud_hash
+                            != local_file.file_hash.map(|h| h.to_hex().to_string()) =>
+                {
                     to_upload.push(local_file.clone())
                 }
                 _ => {}

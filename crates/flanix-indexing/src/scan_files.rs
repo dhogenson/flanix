@@ -5,7 +5,7 @@ use std::io::{BufReader, Read};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use jwalk::WalkDir;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct Indexer {
     scan_path: PathBuf,
@@ -32,7 +32,11 @@ impl LocalFile {
     }
 
     pub fn hash_file(&mut self) -> Result<()> {
-        let file = File::open(&self.file_path)?;
+        self.hash_from(&self.file_path.clone())
+    }
+
+    pub fn hash_from(&mut self, path: &Path) -> Result<()> {
+        let file = File::open(path)?;
         let mut reader = BufReader::new(file);
         let mut hasher = blake3::Hasher::new();
 
@@ -75,11 +79,15 @@ impl Indexer {
             let modified_time = metadata.modified()?;
             let file_size = metadata.len();
 
-            let local_file = LocalFile::new(
+            let mut local_file = LocalFile::new(
                 file_path.strip_prefix(&self.scan_path)?.to_path_buf(),
                 modified_time.into(),
                 file_size,
             )?;
+
+            // Hash the contents while we still have the full path; the
+            // stored path is relative to the scan root.
+            local_file.hash_from(&file_path)?;
 
             files.push(local_file);
         }

@@ -41,6 +41,7 @@ async fn test_add_file(pool: PgPool) -> Result<()> {
             bucket_key,
             &local_path.to_string_lossy(),
             modified_at,
+            None,
             namespace_id,
         )
         .await?;
