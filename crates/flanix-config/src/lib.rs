@@ -1,4 +1,5 @@
 mod config_file;
-mod user_config;
+mod tui;
 
 pub use config_file::Config;
+pub use tui::App;

@@ -2,7 +2,7 @@ mod verify_inputs;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use flanix_config::Config;
+use flanix_config::{App, Config};
 use flanix_core::Sync;
 use std::fs;
 use verify_inputs::validate_namespace;
@@ -35,6 +35,9 @@ enum Functions {
         #[arg(value_parser = validate_namespace)]
         namespace: String,
     },
+
+    /// Edit config through tui
+    Config,
 }
 
 #[tokio::main]
@@ -53,7 +56,11 @@ async fn main() -> Result<()> {
         // The push function already verifies the namespace
         Functions::Push { namespace } => sync.push(namespace).await,
         Functions::Pull { namespace } => sync.pull(namespace).await,
-        // None => Ok(()),
+        Functions::Config => {
+            let mut app = App::new();
+            app.run()?;
+            Ok(())
+        } // None => Ok(()),
     };
 
     if let Err(e) = result {
