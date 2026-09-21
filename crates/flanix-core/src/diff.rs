@@ -37,8 +37,7 @@ impl Sync {
                 // content hashing) needs re-uploading
                 Some((cloud_mtime, cloud_hash))
                     if local_mtime == *cloud_mtime
-                        && *cloud_hash
-                            != local_file.file_hash.map(|h| h.to_hex().to_string()) =>
+                        && *cloud_hash != local_file.file_hash.map(|h| h.to_hex().to_string()) =>
                 {
                     to_upload.push(local_file.clone())
                 }
@@ -100,7 +99,7 @@ impl Sync {
         Ok(to_download)
     }
 
-    pub(crate) async fn files_to_delete_local(
+    pub(crate) async fn files_to_backup(
         &self,
         namespace: &str,
         local_files: &[LocalFile],
@@ -112,12 +111,12 @@ impl Sync {
             .map(|f| PathBuf::from(f.local_path))
             .collect();
 
-        let to_delete: Vec<PathBuf> = local_files
+        let to_backup: Vec<PathBuf> = local_files
             .iter()
             .filter(|f| !cloud_paths.contains(&f.file_path))
             .map(|f| f.file_path.clone())
             .collect();
 
-        Ok(to_delete)
+        Ok(to_backup)
     }
 }

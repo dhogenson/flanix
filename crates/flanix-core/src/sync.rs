@@ -171,7 +171,48 @@ impl Sync {
         let indexer = Indexer::new(root.clone());
         let local_files = indexer.scan()?;
 
-        // first check for files that are newer on the cloud
+        let namespace_id = self.database.get_namespace_id(&namespace).await?;
+
+        let to_backup: HashSet<PathBuf> = self
+            .files_to_backup(&namespace, &local_files)
+            .await?
+            .into_iter()
+            .collect();
+
+        if !to_backup.is_empty() {
+            let mut tx = self.database.begin().await?;
+
+            for local_file in &local_files {
+                if !to_backup.contains(&local_file.file_path) {
+                    continue;
+                }
+
+                let path_str = local_file.file_path.to_string_lossy();
+                let bucket_key = bucket_key(&namespace, &path_str);
+                let full_path = root.join(&local_file.file_path);
+
+                self.bucket
+                    .upload_object(&bucket_key, &full_path.to_string_lossy())
+                    .await?;
+
+                let file_hash = local_file.file_hash.map(|h| h.to_hex().to_string());
+                self.database
+                    .add_file(
+                        &mut *tx,
+                        Uuid::new_v4(),
+                        &bucket_key,
+                        &path_str,
+                        local_file.modified_time,
+                        file_hash.as_deref(),
+                        namespace_id,
+                    )
+                    .await?;
+            }
+
+            tx.commit().await.map_err(crate::errors::DbError::Sqlx)?;
+        }
+
+        // download files that are newer on the cloud
         let files_to_download = self.files_to_pull(&namespace, &local_files).await?;
 
         for file in files_to_download {
@@ -195,12 +236,6 @@ impl Sync {
                 .await?;
 
             std::fs::File::open(&full_path)?.set_modified(modified_at.into())?;
-        }
-
-        let files_to_delete = self.files_to_delete_local(&namespace, &local_files).await?;
-
-        for file in files_to_delete {
-            fs::remove_file(root.join(&file))?;
         }
 
         Ok(())

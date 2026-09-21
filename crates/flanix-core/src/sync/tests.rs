@@ -346,14 +346,14 @@ async fn skips_pull_when_local_copy_is_newer(pool: PgPool) -> Result<()> {
 }
 
 #[sqlx::test]
-async fn lists_local_files_missing_from_cloud_for_deletion(pool: PgPool) -> Result<()> {
+async fn lists_untracked_local_files_to_backup(pool: PgPool) -> Result<()> {
     let sync = test_sync(pool.clone()).await;
     let dir = tempfile::tempdir()?;
     let tracked = write_file(&dir, "tracked.txt")?;
     let mtime = file_modified(&tracked)?;
     let ns_id = create_namespace(&sync.database, "ns-pull-delete").await;
 
-    // tracked.txt exists in the cloud -> kept.
+    // tracked.txt exists in the cloud -> not backed up.
     insert_cloud_file(
         &sync.database,
         "tracked.txt",
@@ -361,14 +361,12 @@ async fn lists_local_files_missing_from_cloud_for_deletion(pool: PgPool) -> Resu
         ns_id,
     )
     .await;
-    // untracked.txt only exists locally -> deleted by pull.
+    // untracked.txt only exists locally -> must be backed up by pull.
     write_file(&dir, "untracked.txt")?;
 
     let local_files = local_files(&dir)?;
-    let to_delete = sync
-        .files_to_delete_local("ns-pull-delete", &local_files)
-        .await?;
+    let to_backup = sync.files_to_backup("ns-pull-delete", &local_files).await?;
 
-    assert_eq!(to_delete, vec![PathBuf::from("untracked.txt")]);
+    assert_eq!(to_backup, vec![PathBuf::from("untracked.txt")]);
     Ok(())
 }
