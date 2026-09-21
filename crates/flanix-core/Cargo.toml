@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 aws-credential-types.workspace = true
 flanix-errors = { path = "../flanix-errors" }
 flanix-config = { path = "../flanix-config" }

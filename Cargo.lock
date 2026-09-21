@@ -1429,6 +1429,7 @@ dependencies = [
  "ratatui-textarea",
  "serde",
  "toml",
+ "uuid",
 ]
 
 [[package]]

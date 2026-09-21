@@ -43,7 +43,8 @@ enum Functions {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let config = Config::new()?;
+    let mut config = Config::new()?;
+    config.ensure_device_id()?;
 
     let result = match cli.command {
         Functions::Add { namespace, path } => {

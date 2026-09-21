@@ -247,9 +247,19 @@ async fn re_uploads_when_content_changes_but_mtime_is_preserved(pool: PgPool) ->
     let ns_id = create_namespace(&sync.database, "ns-same-mtime").await;
 
     // Cloud copy matches the current content at the same mtime -> up to date.
-    insert_cloud_file(&sync.database, "a.txt", truncate_to_micros(original_mtime), ns_id).await;
+    insert_cloud_file(
+        &sync.database,
+        "a.txt",
+        truncate_to_micros(original_mtime),
+        ns_id,
+    )
+    .await;
     let initial_files = local_files(&dir)?;
-    assert!(sync.files_to_upload("ns-same-mtime", &initial_files).await?.is_empty());
+    assert!(
+        sync.files_to_upload("ns-same-mtime", &initial_files)
+            .await?
+            .is_empty()
+    );
 
     // Content changes but the mtime is preserved (e.g. tools that stamp it).
     fs::write(&a, "different content")?;
@@ -346,14 +356,14 @@ async fn skips_pull_when_local_copy_is_newer(pool: PgPool) -> Result<()> {
 }
 
 #[sqlx::test]
-async fn lists_local_files_missing_from_cloud_for_deletion(pool: PgPool) -> Result<()> {
+async fn lists_untracked_local_files_to_backup(pool: PgPool) -> Result<()> {
     let sync = test_sync(pool.clone()).await;
     let dir = tempfile::tempdir()?;
     let tracked = write_file(&dir, "tracked.txt")?;
     let mtime = file_modified(&tracked)?;
     let ns_id = create_namespace(&sync.database, "ns-pull-delete").await;
 
-    // tracked.txt exists in the cloud -> kept.
+    // tracked.txt exists in the cloud -> not backed up.
     insert_cloud_file(
         &sync.database,
         "tracked.txt",
@@ -361,14 +371,123 @@ async fn lists_local_files_missing_from_cloud_for_deletion(pool: PgPool) -> Resu
         ns_id,
     )
     .await;
-    // untracked.txt only exists locally -> deleted by pull.
+    // untracked.txt only exists locally -> must be backed up by pull.
     write_file(&dir, "untracked.txt")?;
 
     let local_files = local_files(&dir)?;
-    let to_delete = sync
-        .files_to_delete_local("ns-pull-delete", &local_files)
+    let to_backup = sync.files_to_backup("ns-pull-delete", &local_files).await?;
+
+    assert_eq!(to_backup, vec![PathBuf::from("untracked.txt")]);
+    Ok(())
+}
+
+#[sqlx::test]
+async fn skips_tombstoned_files_when_backing_up(pool: PgPool) -> Result<()> {
+    let sync = test_sync(pool.clone()).await;
+    let dir = tempfile::tempdir()?;
+    write_file(&dir, "new.txt")?;
+    write_file(&dir, "deleted.txt")?;
+
+    let ns_id = create_namespace(&sync.database, "ns-tombstone").await;
+
+    // new.txt is untracked and not tombstoned -> backed up.
+    // deleted.txt exists locally but has a tombstone -> must NOT be backed up.
+    sqlx::query(
+        "INSERT INTO deleted_files (id, namespace_id, local_path, deleted_at)
+         VALUES ($1, $2, $3, NOW())",
+    )
+    .bind(Uuid::new_v4())
+    .bind(ns_id)
+    .bind("deleted.txt")
+    .execute(&sync.database.pool)
+    .await
+    .unwrap();
+
+    let local_files = local_files(&dir)?;
+    let to_backup = sync.files_to_backup("ns-tombstone", &local_files).await?;
+
+    assert_eq!(to_backup, vec![PathBuf::from("new.txt")]);
+    Ok(())
+}
+
+#[sqlx::test]
+async fn re_upload_clears_tombstone(pool: PgPool) -> Result<()> {
+    let sync = test_sync(pool.clone()).await;
+    let ns_id = create_namespace(&sync.database, "ns-reupload-tombstone").await;
+
+    sync.database
+        .add_tombstone(&sync.database.pool, ns_id, "x.txt")
         .await?;
 
-    assert_eq!(to_delete, vec![PathBuf::from("untracked.txt")]);
+    let mut tx = sync.database.begin().await?;
+    sync.database
+        .remove_tombstone(&mut *tx, ns_id, "x.txt")
+        .await?;
+    tx.commit().await?;
+
+    let tombstones = sync
+        .database
+        .get_tombstones("ns-reupload-tombstone")
+        .await?;
+    assert!(tombstones.is_empty());
     Ok(())
+}
+
+fn local_file(path: &str) -> LocalFile {
+    LocalFile {
+        file_path: PathBuf::from(path),
+        modified_time: Utc::now(),
+        file_size: 0,
+        file_hash: None,
+    }
+}
+
+#[test]
+fn deletes_only_files_the_device_previously_had() {
+    let previously_had = [
+        PathBuf::from("mine.txt"),
+        PathBuf::from("gone.txt"),
+        PathBuf::from("also-deleted.txt"),
+    ]
+    .into_iter()
+    .collect::<HashSet<_>>();
+
+    // The disk retains mine.txt, so it is not a deletion. Another device's
+    // file is in the cloud but was never on this device -> never deleted.
+    let local_files = vec![local_file("mine.txt"), local_file("new.txt")];
+    let cloud_paths = [
+        PathBuf::from("mine.txt"),
+        PathBuf::from("gone.txt"),
+        PathBuf::from("also-deleted.txt"),
+        PathBuf::from("someone-else.txt"),
+    ]
+    .into_iter()
+    .collect::<HashSet<_>>();
+
+    let deletes = Sync::files_to_delete(&previously_had, &local_files, &cloud_paths);
+
+    assert_eq!(
+        sorted(deletes.into_iter().collect()),
+        sorted(vec![
+            PathBuf::from("gone.txt"),
+            PathBuf::from("also-deleted.txt")
+        ])
+    );
+}
+
+#[test]
+fn skips_deletion_when_cloud_copy_already_gone() {
+    let previously_had = [PathBuf::from("was-mine.txt")]
+        .into_iter()
+        .collect::<HashSet<_>>();
+
+    // The cloud copy no longer exists (another device already deleted it), so
+    // there is nothing left to delete or tombstone.
+    let deletes = Sync::files_to_delete(
+        &previously_had,
+        &[local_file("other.txt")],
+        &HashSet::from([PathBuf::from("other.txt")]),
+    );
+
+    assert!(deletes.is_empty());
 }

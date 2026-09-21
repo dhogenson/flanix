@@ -20,6 +20,7 @@ use std::io::stdout;
 
 use crate::Config;
 
+/// Main TUI struct for editing config
 pub struct App<'a> {
     items: Vec<String>,
     selected: ListState,

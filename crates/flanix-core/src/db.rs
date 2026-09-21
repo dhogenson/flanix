@@ -1,6 +1,7 @@
 use crate::errors::DbError;
 use chrono::{DateTime, TimeDelta, Utc};
 use sqlx::{PgExecutor, Pool, Postgres, postgres::PgPoolOptions};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -206,6 +207,166 @@ impl Database {
         .bind(file_hash)
         .bind(namespace_id)
         .bind(local_path)
+        .execute(executor)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Records that a file was deleted on the cloud. `pull` uses these
+    /// tombstones to know it should remove the local copy instead of backing
+    /// the file back up as if it were new.
+    pub async fn add_tombstone(
+        &self,
+        executor: impl PgExecutor<'_>,
+        namespace_id: Uuid,
+        local_path: &str,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            "INSERT INTO deleted_files (id, namespace_id, local_path, deleted_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (namespace_id, local_path) DO UPDATE SET deleted_at = NOW()",
+        )
+        .bind(Uuid::new_v4())
+        .bind(namespace_id)
+        .bind(local_path)
+        .execute(executor)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Clears the tombstone for a path, used when the file is re-uploaded.
+    pub async fn remove_tombstone(
+        &self,
+        executor: impl PgExecutor<'_>,
+        namespace_id: Uuid,
+        local_path: &str,
+    ) -> Result<(), DbError> {
+        sqlx::query("DELETE FROM deleted_files WHERE namespace_id = $1 AND local_path = $2")
+            .bind(namespace_id)
+            .bind(local_path)
+            .execute(executor)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Returns `(local_path, deleted_at)` for every tombstone in a namespace.
+    pub async fn get_tombstones(
+        &self,
+        namespace: &str,
+    ) -> Result<Vec<(String, DateTime<Utc>)>, DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        let tombstones = sqlx::query_as::<_, (String, DateTime<Utc>)>(
+            "SELECT local_path, deleted_at FROM deleted_files WHERE namespace_id = $1",
+        )
+        .bind(namespace_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(tombstones)
+    }
+
+    /// Removes tombstones older than `before`, bounding table growth. Any
+    /// device that hasn't pulled within the TTL may re-back-up the file as
+    /// new the next time it does.
+    pub async fn prune_tombstones(
+        &self,
+        namespace: &str,
+        before: DateTime<Utc>,
+    ) -> Result<u64, DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        let result =
+            sqlx::query("DELETE FROM deleted_files WHERE namespace_id = $1 AND deleted_at < $2")
+                .bind(namespace_id)
+                .bind(before)
+                .execute(&self.pool)
+                .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Inserts the device or refreshes its heartbeat. Kept separate from the
+    /// per-device manifest so a future step can use `last_seen_at` to decide
+    /// when every connected device has observed a deletion before garbage
+    /// collecting its tombstone.
+    pub async fn register_device(&self, device_id: Uuid, name: &str) -> Result<(), DbError> {
+        sqlx::query(
+            "INSERT INTO devices (id, name, last_seen_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (id) DO UPDATE SET last_seen_at = NOW()",
+        )
+        .bind(device_id)
+        .bind(name)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Returns every path this device previously had for a namespace. This is
+    /// the device's own manifest; absence here is never treated as a deletion.
+    pub async fn get_device_files(
+        &self,
+        device_id: Uuid,
+        namespace: &str,
+    ) -> Result<Vec<PathBuf>, DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        let paths: Vec<String> = sqlx::query_scalar(
+            "SELECT local_path FROM device_files WHERE device_id = $1 AND namespace_id = $2",
+        )
+        .bind(device_id)
+        .bind(namespace_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(paths.into_iter().map(PathBuf::from).collect())
+    }
+
+    /// Replaces this device's manifest for a namespace with `paths`. Idempotent,
+    /// so it may be run with the pool even after the sync transaction commits.
+    pub async fn replace_device_files(
+        &self,
+        executor: impl PgExecutor<'_>,
+        device_id: Uuid,
+        namespace: &str,
+        paths: &[PathBuf],
+    ) -> Result<(), DbError> {
+        let namespace_id = self.get_namespace_id(namespace).await?;
+
+        let paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+
+        // One statement: drop every manifest entry not in `paths`, then insert
+        // every entry that is. Data-modifying CTEs operate row-disjointly here
+        // (the delete targets paths absent from the list, the insert the
+        // listed ones), so they can share a single executed query.
+        sqlx::query(
+            "WITH input AS (
+                 SELECT $1::uuid AS device_id,
+                        $2::uuid AS namespace_id,
+                        unnest($3::text[]) AS local_path
+             ),
+             to_delete AS (
+                 DELETE FROM device_files df
+                 USING input
+                 WHERE df.device_id = input.device_id
+                   AND df.namespace_id = input.namespace_id
+                   AND df.local_path NOT IN (SELECT local_path FROM input)
+             )
+             INSERT INTO device_files (device_id, namespace_id, local_path)
+             SELECT device_id, namespace_id, local_path FROM input
+             ON CONFLICT (device_id, namespace_id, local_path) DO NOTHING",
+        )
+        .bind(device_id)
+        .bind(namespace_id)
+        .bind(paths)
         .execute(executor)
         .await?;
 

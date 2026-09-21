@@ -6,7 +6,7 @@ use aws_credential_types::{
 };
 use aws_sdk_s3::{
     Client,
-    config::Builder as S3ConfigBuilder,
+    config::{Builder as S3ConfigBuilder, RequestChecksumCalculation},
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
@@ -32,8 +32,16 @@ impl Bucket {
     /// S3-compatible services that don't support virtual-host (bucket.fqdn)
     /// addressing (e.g. Garage) require path-style requests like
     /// `/<bucket>/<key>`, so disable virtual-host addressing.
+    ///
+    /// The SDK's default `RequestChecksumCalculation::WhenSupported` makes
+    /// `put_object` add a CRC32 checksum, which forces request bodies into
+    /// aws-chunked streaming-signed payloads. Garage does not support this
+    /// format and rejects it with "Invalid payload signature", so only send
+    /// checksums when the operation actually requires one.
     fn client_config(config_builder: S3ConfigBuilder) -> S3ConfigBuilder {
-        config_builder.force_path_style(true)
+        config_builder
+            .force_path_style(true)
+            .request_checksum_calculation(RequestChecksumCalculation::WhenRequired)
     }
 
     pub async fn new(config: &Config) -> Self {

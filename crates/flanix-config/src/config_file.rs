@@ -2,6 +2,7 @@ use directories::ProjectDirs;
 use flanix_errors::SyncError;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Namespace {
@@ -27,6 +28,7 @@ pub struct Config {
     pub database_url: String,
     pub max_database_connections: u64,
     pub namespaces: Vec<Namespace>,
+    pub device_id: Option<String>,
 }
 
 impl Default for Config {
@@ -41,6 +43,7 @@ impl Default for Config {
             database_url: "postgres://user:password@localhost/mydb".to_string(),
             max_database_connections: 5,
             namespaces: Vec::new(),
+            device_id: None,
         }
     }
 }
@@ -103,6 +106,18 @@ impl Config {
         fs::write(&tmp_path, &toml_string)?;
         fs::rename(&tmp_path, path)?;
 
+        Ok(())
+    }
+
+    /// Generates and persists a stable device id if the config does not have
+    /// one yet. This id scopes the per-device manifest so one machine can
+    /// never delete another machine's files.
+    pub fn ensure_device_id(&mut self) -> Result<(), SyncError> {
+        if self.device_id.is_none() {
+            self.device_id = Some(Uuid::new_v4().to_string());
+            let config_path = Self::get_config_file()?;
+            Self::write_config(&config_path, self)?;
+        }
         Ok(())
     }
 }

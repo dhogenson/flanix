@@ -11,6 +11,10 @@ pub struct Indexer {
     scan_path: PathBuf,
 }
 
+/// Sync-internal reserve. Local trash moved here by `pull` is excluded from
+/// scans, so it is never pushed or re-backed-up.
+pub const TMP_TRASH_DIR: &str = ".flanix-trash";
+
 #[derive(Debug, Clone)]
 pub struct LocalFile {
     pub file_path: PathBuf,
@@ -66,8 +70,15 @@ impl Indexer {
 
         for entry in WalkDir::new(&self.scan_path) {
             let entry = entry?;
+            let full_path = entry.path();
+            // The trash folder is a sync-internal staging area; files in it
+            // must never be treated as part of the namespace.
+            let relative = full_path.strip_prefix(&self.scan_path)?;
+            if relative.starts_with(TMP_TRASH_DIR) {
+                continue;
+            }
             if entry.file_type().is_file() {
-                file_paths.push(entry.path().to_path_buf());
+                file_paths.push(full_path.clone());
             }
         }
 
@@ -120,6 +131,26 @@ mod tests {
 
         let expected_hash = blake3::hash(content);
         assert_eq!(local_file.file_hash, Some(expected_hash));
+        Ok(())
+    }
+
+    #[test]
+    fn scan_skips_trash_dir() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        fs::write(dir.path().join("keep.txt"), "keep")?;
+        fs::create_dir_all(dir.path().join(TMP_TRASH_DIR).join("123"))?;
+        fs::write(
+            dir.path()
+                .join(TMP_TRASH_DIR)
+                .join("123")
+                .join("doomed.txt"),
+            "doomed",
+        )?;
+
+        let files = Indexer::new(dir.path().to_path_buf()).scan()?;
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_path, PathBuf::from("keep.txt"));
         Ok(())
     }
 }

@@ -37,8 +37,7 @@ impl Sync {
                 // content hashing) needs re-uploading
                 Some((cloud_mtime, cloud_hash))
                     if local_mtime == *cloud_mtime
-                        && *cloud_hash
-                            != local_file.file_hash.map(|h| h.to_hex().to_string()) =>
+                        && *cloud_hash != local_file.file_hash.map(|h| h.to_hex().to_string()) =>
                 {
                     to_upload.push(local_file.clone())
                 }
@@ -49,22 +48,26 @@ impl Sync {
         Ok(to_upload)
     }
 
-    pub(crate) async fn files_to_delete(
-        &self,
-        namespace: &str,
+    /// Deletion candidates for a push: paths this device previously had, no
+    /// longer has on disk, and that are still tracked in the cloud.
+    ///
+    /// Absence on one machine never marks a file for deletion — a path must
+    /// have been in THIS device's previous manifest, or it belongs to some
+    /// other machine and is left untouched. Files already removed from the
+    /// cloud (e.g. deleted by another device) also drop out of the candidates.
+    pub(crate) fn files_to_delete(
+        previously_had: &HashSet<PathBuf>,
         local_files: &[LocalFile],
-    ) -> Result<Vec<PathBuf>, SyncError> {
-        let cloud_files = self.database.get_files(namespace).await?;
+        cloud_paths: &HashSet<PathBuf>,
+    ) -> HashSet<PathBuf> {
+        let local_paths: HashSet<PathBuf> =
+            local_files.iter().map(|f| f.file_path.clone()).collect();
 
-        let local_paths: HashSet<&PathBuf> = local_files.iter().map(|f| &f.file_path).collect();
-
-        let to_delete: Vec<PathBuf> = cloud_files
-            .into_iter()
-            .map(|f| PathBuf::from(f.local_path))
-            .filter(|p| !local_paths.contains(p))
-            .collect();
-
-        Ok(to_delete)
+        previously_had
+            .difference(&local_paths)
+            .filter(|p| cloud_paths.contains(*p))
+            .cloned()
+            .collect()
     }
 
     pub(crate) async fn files_to_pull(
@@ -100,7 +103,13 @@ impl Sync {
         Ok(to_download)
     }
 
-    pub(crate) async fn files_to_delete_local(
+    /// Local files with no cloud/DB record and no deletion tombstone.
+    ///
+    /// These are the files `pull` must back up first — never delete them, or
+    /// pull would destroy local data that was never pushed. Files that were
+    /// deleted on the cloud (tombstoned) are excluded: their local copies are
+    /// removed instead.
+    pub(crate) async fn files_to_backup(
         &self,
         namespace: &str,
         local_files: &[LocalFile],
@@ -112,12 +121,21 @@ impl Sync {
             .map(|f| PathBuf::from(f.local_path))
             .collect();
 
-        let to_delete: Vec<PathBuf> = local_files
+        let tombstoned_paths: HashSet<PathBuf> = self
+            .database
+            .get_tombstones(namespace)
+            .await?
+            .into_iter()
+            .map(|(path, _)| PathBuf::from(path))
+            .collect();
+
+        let to_backup: Vec<PathBuf> = local_files
             .iter()
             .filter(|f| !cloud_paths.contains(&f.file_path))
+            .filter(|f| !tombstoned_paths.contains(&f.file_path))
             .map(|f| f.file_path.clone())
             .collect();
 
-        Ok(to_delete)
+        Ok(to_backup)
     }
 }
