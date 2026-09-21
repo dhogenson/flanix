@@ -4,6 +4,7 @@
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -136,6 +137,20 @@ impl Sync {
         }
 
         tx.commit().await.map_err(crate::errors::DbError::Sqlx)?;
+
+        let expected_keys: HashSet<String> = self
+            .database
+            .get_all_files()
+            .await?
+            .into_iter()
+            .map(|file| file.bucket_key)
+            .collect();
+
+        for object_key in self.bucket.list_objects().await? {
+            if !expected_keys.contains(&object_key) {
+                self.bucket.delete_object(&object_key).await?;
+            }
+        }
 
         Ok(())
     }

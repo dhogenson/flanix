@@ -140,6 +140,17 @@ impl Database {
         Ok(files)
     }
 
+    /// Returns every tracked file across all namespaces.
+    pub async fn get_all_files(&self) -> Result<Vec<File>, DbError> {
+        let files = sqlx::query_as::<_, File>(
+            "SELECT id, bucket_key, local_path, modified_at, namespace_id, file_hash FROM files",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(files)
+    }
+
     pub async fn file_exists(&self, namespace_id: Uuid, local_path: &str) -> Result<bool, DbError> {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM files WHERE namespace_id = $1 AND local_path = $2) AS value_exists",

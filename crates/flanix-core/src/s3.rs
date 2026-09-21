@@ -188,6 +188,33 @@ impl Bucket {
         Ok(())
     }
 
+    pub async fn list_objects(&self) -> Result<Vec<String>, SyncError> {
+        let mut keys = Vec::new();
+        let mut continuation_token: Option<String> = None;
+
+        loop {
+            let mut request = self.client.list_objects_v2().bucket(&self.name);
+            if let Some(token) = &continuation_token {
+                request = request.continuation_token(token);
+            }
+
+            let output = request.send().await?;
+
+            for object in output.contents() {
+                if let Some(key) = object.key() {
+                    keys.push(key.to_string());
+                }
+            }
+
+            match output.next_continuation_token() {
+                Some(token) => continuation_token = Some(token.to_string()),
+                None => break,
+            }
+        }
+
+        Ok(keys)
+    }
+
     pub async fn download_object(&self, key: &str, path: &str) -> Result<(), SyncError> {
         let response = self
             .client
