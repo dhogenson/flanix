@@ -11,6 +11,9 @@ pub enum ConfigSelection {
     AwsDefaultRegion,
     BucketName,
     DeviceId,
+    SweepOrphans,
+    TrashRetentionDays,
+    AllowMassDeletes,
 }
 
 impl ConfigSelection {
@@ -24,6 +27,9 @@ impl ConfigSelection {
             5 => Some(Self::AwsDefaultRegion),
             6 => Some(Self::BucketName),
             7 => Some(Self::DeviceId),
+            8 => Some(Self::SweepOrphans),
+            9 => Some(Self::TrashRetentionDays),
+            10 => Some(Self::AllowMassDeletes),
             _ => None,
         }
     }
@@ -38,10 +44,13 @@ impl ConfigSelection {
             Self::AwsDefaultRegion => "AWS Default Region",
             Self::BucketName => "Bucket Name",
             Self::DeviceId => "Device ID",
+            Self::SweepOrphans => "Sweep Orphans",
+            Self::TrashRetentionDays => "Trash Retention Days",
+            Self::AllowMassDeletes => "Allow Mass Deletes",
         }
     }
 
-    pub fn all() -> [ConfigSelection; 8] {
+    pub fn all() -> [ConfigSelection; 11] {
         [
             Self::DatabaseUrl,
             Self::MaxDatabaseConnections,
@@ -51,6 +60,9 @@ impl ConfigSelection {
             Self::AwsDefaultRegion,
             Self::BucketName,
             Self::DeviceId,
+            Self::SweepOrphans,
+            Self::TrashRetentionDays,
+            Self::AllowMassDeletes,
         ]
     }
 
@@ -67,6 +79,9 @@ impl ConfigSelection {
                 .device_id
                 .as_deref()
                 .map_or(Cow::Owned(String::new()), Cow::Borrowed),
+            Self::SweepOrphans => Cow::Owned(config.sweep_orphans.to_string()),
+            Self::TrashRetentionDays => Cow::Owned(config.trash_retention_days.to_string()),
+            Self::AllowMassDeletes => Cow::Owned(config.allow_mass_deletes.to_string()),
         }
     }
 
@@ -80,6 +95,40 @@ impl ConfigSelection {
             Self::AwsDefaultRegion => Some(&mut config.aws_default_region),
             Self::BucketName => Some(&mut config.bucket_name),
             Self::DeviceId => config.device_id.as_mut(),
+            Self::SweepOrphans => None,
+            Self::TrashRetentionDays => None,
+            Self::AllowMassDeletes => None,
+        }
+    }
+
+    pub fn set_value(&self, config: &mut Config, value: &str) {
+        if let Some(field) = self.value_mut(config) {
+            *field = value.to_string();
+            return;
+        }
+
+        match self {
+            Self::MaxDatabaseConnections => {
+                if let Ok(value) = value.parse::<u64>() {
+                    config.max_database_connections = value;
+                }
+            }
+            Self::SweepOrphans => {
+                if let Ok(value) = value.parse::<bool>() {
+                    config.sweep_orphans = value;
+                }
+            }
+            Self::TrashRetentionDays => {
+                if let Ok(value) = value.parse::<u64>() {
+                    config.trash_retention_days = value;
+                }
+            }
+            Self::AllowMassDeletes => {
+                if let Ok(value) = value.parse::<bool>() {
+                    config.allow_mass_deletes = value;
+                }
+            }
+            _ => {}
         }
     }
 }

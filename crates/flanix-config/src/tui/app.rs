@@ -155,14 +155,8 @@ impl<'a> App<'a> {
 
     fn stop_editing(&mut self) {
         if let Some(selection) = self.current_selection() {
-            match selection.value_mut(&mut self.new_config) {
-                Some(field) => *field = self.textarea.lines().join("\n"),
-                None => {
-                    if let Ok(n) = self.textarea.lines().join("\n").parse::<u64>() {
-                        self.new_config.max_database_connections = n;
-                    }
-                }
-            }
+            let value = self.textarea.lines().join("\n");
+            selection.set_value(&mut self.new_config, &value);
         }
         self.editing = false;
     }

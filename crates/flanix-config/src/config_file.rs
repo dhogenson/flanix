@@ -29,19 +29,8 @@ pub struct Config {
     pub max_database_connections: u64,
     pub namespaces: Vec<Namespace>,
     pub device_id: Option<String>,
-    /// Destructively remove every S3 object not tracked in the database after
-    /// each push. Opt-in: with a shared/reused bucket, a database reset, or a
-    /// second install pointed at the same bucket, this would empty the backup.
     pub sweep_orphans: bool,
-    /// How long `.flanix-trash` entries and deletion tombstones are kept. A
-    /// trash entry is only ever pruned once every registered device has pulled
-    /// at/after it AND it is older than this many days.
     pub trash_retention_days: u64,
-    /// Bypass the "mass delete" safety guard in `push`. The guard aborts a
-    /// push whose delete set is a large fraction of both the files this device
-    /// previously had and the namespace's cloud-tracked files, which almost
-    /// always means the sync folder moved or was misconfigured. Set this only
-    /// if you genuinely deleted most of a namespace and want it to proceed.
     pub allow_mass_deletes: bool,
 }
 
