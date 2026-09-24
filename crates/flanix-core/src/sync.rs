@@ -5,9 +5,10 @@
 mod tests;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncReadExt;
 
 use crate::Bucket;
 use crate::Database;
@@ -53,9 +54,7 @@ impl Sync {
         format!("{host}-{}", &device_id.to_string()[..8])
     }
 
-    /// Removes trash entries older than `before`. Runs on every `pull` so the
-    /// stash is bounded but never deleted immediately.
-    fn prune_trash(root: &Path, before: DateTime<Utc>) -> Result<(), std::io::Error> {
+    async fn prune_trash(&self, root: &Path, before: DateTime<Utc>) -> Result<(), SyncError> {
         let trash_root = root.join(flanix_indexing::TMP_TRASH_DIR);
         if !trash_root.exists() {
             return Ok(());
@@ -63,11 +62,78 @@ impl Sync {
         for entry in fs::read_dir(&trash_root)? {
             let entry = entry?;
             let entry_mtime: DateTime<Utc> = entry.metadata()?.modified()?.into();
-            if entry_mtime < before {
+            if entry_mtime < before && self.database.devices_seen_since(entry_mtime).await? {
                 fs::remove_dir_all(entry.path())?;
             }
         }
         Ok(())
+    }
+
+    /// blake3 of a local file's content, hex-encoded.
+    async fn hash_file(path: &Path) -> Result<String, SyncError> {
+        let mut file = tokio::fs::File::open(path).await?;
+        let mut hasher = blake3::Hasher::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = file.read(&mut buf).await?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        Ok(hasher.finalize().to_hex().to_string())
+    }
+
+    async fn verify_upload(&self, object_key: &str, local_path: &Path) -> Result<(), SyncError> {
+        let local_hash = Self::hash_file(local_path).await?;
+        let local_len = fs::metadata(local_path)?.len();
+        let (remote_len, remote_hash) = self.bucket.object_content_hash(object_key).await?;
+
+        if local_len != remote_len || local_hash != remote_hash {
+            return Err(SyncError::Anyhow(anyhow::anyhow!(
+                "integrity check failed for '{}': object has size {remote_len} and hash \
+                 {remote_hash}, but the local file is {local_len} bytes with hash {local_hash}",
+                local_path.display()
+            )));
+        }
+
+        Ok(())
+    }
+
+    async fn ensure_uploaded(&self, object_key: &str, local_path: &Path) -> Result<(), SyncError> {
+        if self.bucket.object_exists(object_key).await? {
+            let local_len = fs::metadata(local_path)?.len();
+            let local_hash = Self::hash_file(local_path).await?;
+            let (remote_len, remote_hash) = self.bucket.object_content_hash(object_key).await?;
+            if remote_len == local_len && remote_hash == local_hash {
+                return Ok(());
+            }
+        }
+        self.bucket
+            .upload_object(object_key, &local_path.to_string_lossy())
+            .await?;
+        self.verify_upload(object_key, local_path).await?;
+        Ok(())
+    }
+
+    fn confirm_yes(answer: &str) -> bool {
+        matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+    }
+
+    fn ask_to_trash(path: &Path) -> bool {
+        eprint!(
+            "'{}' was deleted on the cloud but modified locally; move it to the trash \
+             (.flanix-trash) anyway? [y/N] ",
+            path.display()
+        );
+        let mut line = String::new();
+        use std::io::BufRead;
+        let answered = std::io::stdin()
+            .lock()
+            .read_line(&mut line)
+            .map(|n| n > 0)
+            .unwrap_or(false);
+        answered && Self::confirm_yes(&line)
     }
 
     /// Uploads new and changed files to the cloud
@@ -92,10 +158,6 @@ impl Sync {
             .register_device(device_id, &self.device_name(device_id))
             .await?;
 
-        // Per-device deletion. Only files that THIS device previously had and
-        // no longer has are deletions. Absence on one machine must never
-        // destroy files another device uploaded, so the global `files` table
-        // is never diffed against the local disk directly.
         let previously_had: HashSet<PathBuf> = self
             .database
             .get_device_files(device_id, &namespace)
@@ -130,40 +192,64 @@ impl Sync {
             });
         }
 
-        // Only tombstone/delete cloud files this device actually used to have
-        // and that are still tracked globally (another machine may already
-        // have deleted them). Files we merely never had are left untouched.
-        let cloud_paths: HashSet<PathBuf> = self
-            .database
-            .get_files(&namespace)
-            .await?
-            .into_iter()
-            .map(|f| PathBuf::from(f.local_path))
+        let cloud_files = self.database.get_files(&namespace).await?;
+        let cloud_paths: HashSet<PathBuf> = cloud_files
+            .iter()
+            .map(|f| PathBuf::from(f.local_path.clone()))
             .collect();
 
         let deletes = Self::files_to_delete(&previously_had, &local_files, &cloud_paths);
 
+        if !self.config.allow_mass_deletes
+            && Self::is_mass_delete(&deletes, &previously_had, &cloud_paths)
+        {
+            let owned_pct = deletes.len() as f64 / previously_had.len() as f64 * 100.0;
+            let cloud_pct = deletes.len() as f64 / cloud_paths.len() as f64 * 100.0;
+            return Err(SyncError::Anyhow(anyhow::anyhow!(
+                "refusing to delete {} cloud object(s) in namespace '{namespace}': the delete \
+                 set is {owned_pct:.0}% of the files this device previously had and {cloud_pct:.0}% \
+                 of the namespace's cloud objects, which looks like the sync folder moved or was \
+                 misconfigured rather than a real deletion. If you genuinely deleted these files, \
+                 set allow_mass_deletes = true in the config and re-run.",
+                deletes.len()
+            )));
+        }
+
+        let local_by_hash: HashMap<String, Vec<PathBuf>> = {
+            let mut index: HashMap<String, Vec<PathBuf>> = HashMap::new();
+            for file in &local_files {
+                if let Some(hash) = file.file_hash {
+                    index
+                        .entry(hash.to_hex().to_string())
+                        .or_default()
+                        .push(file.file_path.clone());
+                }
+            }
+            index
+        };
+        let cloud_hashes: HashMap<PathBuf, Option<String>> = cloud_files
+            .iter()
+            .map(|f| (PathBuf::from(f.local_path.clone()), f.file_hash.clone()))
+            .collect();
+        let moved = Self::filter_moved_deletes(&deletes, &cloud_hashes, &local_by_hash);
+
         let mut delete_objects = Vec::new();
         for file in &deletes {
+            if moved.contains(file) {
+                continue;
+            }
             let object_key = bucket_key(&namespace, &file.to_string_lossy());
             delete_objects.push((file.clone(), object_key));
         }
 
         for target in &uploads {
-            self.bucket
-                .upload_object(&target.bucket_key, &target.full_path.to_string_lossy())
+            self.ensure_uploaded(&target.bucket_key, &target.full_path)
                 .await?;
         }
 
-        for (_, object_key) in &delete_objects {
-            self.bucket.delete_object(object_key).await?;
-        }
-
-        // Phase 2: record the result in the DB as a single transaction, so the
-        // ledger is either fully updated or not changed at all.
         let mut tx = self.database.begin().await?;
 
-        for target in uploads {
+        for target in &uploads {
             let path_str = target.file.file_path.to_string_lossy();
             let file_hash = target.file.file_hash.map(|h| h.to_hex().to_string());
 
@@ -197,7 +283,7 @@ impl Sync {
                 .await?;
         }
 
-        for (file, _) in delete_objects {
+        for (file, _) in &delete_objects {
             let path = file.to_string_lossy();
 
             self.database
@@ -213,6 +299,10 @@ impl Sync {
 
         tx.commit().await.map_err(crate::errors::DbError::Sqlx)?;
 
+        for (_, object_key) in &delete_objects {
+            self.bucket.delete_object(object_key).await?;
+        }
+
         // Refresh this device's manifest to the current local state, dropping
         // the paths that were deleted above so they aren't re-considered.
         let current_paths: Vec<PathBuf> = local_files.iter().map(|f| f.file_path.clone()).collect();
@@ -220,24 +310,36 @@ impl Sync {
             .replace_device_files(&self.database.pool, device_id, &namespace, &current_paths)
             .await?;
 
-        let expected_keys: HashSet<String> = self
-            .database
-            .get_all_files()
-            .await?
-            .into_iter()
-            .map(|file| file.bucket_key)
-            .collect();
+        if self.config.sweep_orphans {
+            let expected_keys: HashSet<String> = self
+                .database
+                .get_all_files()
+                .await?
+                .into_iter()
+                .map(|file| file.bucket_key)
+                .collect();
 
-        for object_key in self.bucket.list_objects().await? {
-            if !expected_keys.contains(&object_key) {
-                self.bucket.delete_object(&object_key).await?;
+            for object_key in self.bucket.list_objects().await? {
+                if !expected_keys.contains(&object_key) {
+                    self.bucket.delete_object(&object_key).await?;
+                }
             }
         }
 
         Ok(())
     }
 
-    pub async fn pull(&self, namespace: String) -> Result<(), SyncError> {
+    /// Downloads the cloud state for a namespace.
+    ///
+    /// With `dry_run` nothing is modified: no uploads, no trash moves, no
+    /// downloads, no pruning, and no manifest refresh. It only reports what a
+    /// real pull would do.
+    pub async fn pull(
+        &self,
+        namespace: String,
+        dry_run: bool,
+        assume_yes: bool,
+    ) -> Result<(), SyncError> {
         let path = match self.config.find_namespace_path(&namespace.to_string()) {
             Some(path) => path,
             None => {
@@ -256,9 +358,11 @@ impl Sync {
         let namespace_id = self.database.get_namespace_id(&namespace).await?;
 
         let device_id = self.device_id()?;
-        self.database
-            .register_device(device_id, &self.device_name(device_id))
-            .await?;
+        if !dry_run {
+            self.database
+                .register_device(device_id, &self.device_name(device_id))
+                .await?;
+        }
 
         // Back up local files that were never pushed. This is what makes pull
         // non-destructive: local files are only ever protected by being
@@ -269,7 +373,11 @@ impl Sync {
             .into_iter()
             .collect();
 
-        if !to_backup.is_empty() {
+        if dry_run {
+            for file in &to_backup {
+                println!("would back up '{}'", file.display());
+            }
+        } else if !to_backup.is_empty() {
             let mut tx = self.database.begin().await?;
 
             for local_file in &local_files {
@@ -281,9 +389,7 @@ impl Sync {
                 let full_path = root.join(&local_file.file_path);
 
                 let key = bucket_key(&namespace, &path_str);
-                self.bucket
-                    .upload_object(&key, &full_path.to_string_lossy())
-                    .await?;
+                self.ensure_uploaded(&key, &full_path).await?;
 
                 let file_hash = local_file.file_hash.map(|h| h.to_hex().to_string());
                 self.database
@@ -303,16 +409,18 @@ impl Sync {
         }
 
         // Propagate cloud deletions: remove local copies of tombstoned files.
-        let tombstoned: HashSet<PathBuf> = self
-            .database
-            .get_tombstones(&namespace)
-            .await?
-            .into_iter()
+        let tombstones = self.database.get_tombstones(&namespace).await?;
+        let tombstoned: HashSet<PathBuf> = tombstones
+            .iter()
             .map(|(path, _)| PathBuf::from(path))
+            .collect();
+        let tombstone_times: HashMap<PathBuf, DateTime<Utc>> = tombstones
+            .into_iter()
+            .map(|(path, at)| (PathBuf::from(path), at))
             .collect();
 
         let mut removed_local: HashSet<PathBuf> = HashSet::new();
-        let retention = Utc::now() - TimeDelta::days(30);
+        let retention = Utc::now() - TimeDelta::days(self.config.trash_retention_days as i64);
 
         // Propagate cloud deletions by trashing, never unlinking: tombstoned
         // files are moved into .flanix-trash/<stamp>/ so a mistake can be
@@ -320,29 +428,124 @@ impl Sync {
         let trash_root = root.join(flanix_indexing::TMP_TRASH_DIR);
         let stamp = Utc::now().timestamp_millis().to_string();
         for local_file in &local_files {
-            if tombstoned.contains(&local_file.file_path) {
-                let src = root.join(&local_file.file_path);
-                let dst = trash_root.join(&stamp).join(&local_file.file_path);
+            if !tombstoned.contains(&local_file.file_path) {
+                continue;
+            }
+
+            let modified_after_deletion = tombstone_times
+                .get(&local_file.file_path)
+                .is_some_and(|deleted_at| local_file.modified_time > *deleted_at);
+
+            if dry_run {
+                if modified_after_deletion {
+                    println!(
+                        "would ask before trashing '{}' (modified locally after it was deleted \
+                         on the cloud)",
+                        local_file.file_path.display()
+                    );
+                } else {
+                    println!(
+                        "would trash '{}' (deleted on the cloud)",
+                        local_file.file_path.display()
+                    );
+                }
+                continue;
+            }
+
+            if modified_after_deletion && !assume_yes && !Self::ask_to_trash(&local_file.file_path)
+            {
+                eprintln!(
+                    "kept '{}' locally (declined to trash a file modified after the cloud \
+                     deletion); the next push will re-upload it",
+                    local_file.file_path.display()
+                );
+                continue;
+            }
+
+            let src = root.join(&local_file.file_path);
+            let dst = trash_root.join(&stamp).join(&local_file.file_path);
+            let move_result = (|| -> std::io::Result<()> {
                 if let Some(parent) = dst.parent() {
                     fs::create_dir_all(parent)?;
                 }
                 fs::rename(&src, &dst)?;
-                removed_local.insert(local_file.file_path.clone());
+                Ok(())
+            })();
+            match move_result {
+                Ok(()) => {
+                    removed_local.insert(local_file.file_path.clone());
+                }
+                Err(e) => {
+                    eprintln!(
+                        "warning: could not move '{}' to the trash ({}); keeping the local copy",
+                        local_file.file_path.display(),
+                        e
+                    );
+                }
             }
         }
 
-        // Bound the trash and tombstone tables. Devices that haven't pulled
-        // within the retention window may re-back-up the file as new next time
-        // they do.
-        Self::prune_trash(&root, retention)?;
-        self.database
-            .prune_tombstones(&namespace, retention)
-            .await?;
+        if !dry_run {
+            self.prune_trash(&root, retention).await?;
+            self.database
+                .prune_tombstones(&namespace, retention)
+                .await?;
+        }
 
         // download files that are newer on the cloud
         let files_to_download = self.files_to_pull(&namespace, &local_files).await?;
 
+        let conflicts: HashSet<PathBuf> = self
+            .files_to_conflict(&namespace, &local_files, &files_to_download)
+            .await?
+            .into_iter()
+            .collect();
+
+        if dry_run {
+            for file in &conflicts {
+                println!(
+                    "would stash '{}' as a conflict (differs from the newer cloud copy)",
+                    file.display()
+                );
+            }
+            for file in &files_to_download {
+                println!("would download '{}'", file.display());
+            }
+            return Ok(());
+        }
+
         for file in &files_to_download {
+            if conflicts.contains(file) {
+                let src = root.join(file);
+                let dst = trash_root.join(&stamp).join(file);
+                let move_result = (|| -> std::io::Result<()> {
+                    if let Some(parent) = dst.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::rename(&src, &dst)?;
+                    Ok(())
+                })();
+                match move_result {
+                    Ok(()) => {
+                        eprintln!(
+                            "conflict: '{}' differs from the cloud copy and the cloud copy is \
+                             newer; local edition preserved in '{}'",
+                            file.display(),
+                            dst.display()
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "warning: conflict on '{}' could not be stashed in the trash ({}); \
+                             leaving the local copy in place and skipping the download",
+                            file.display(),
+                            e
+                        );
+                        continue;
+                    }
+                }
+            }
+
             let path_str = file.to_string_lossy().to_string();
 
             let bucket_key = bucket_key(&namespace, &path_str);
@@ -365,9 +568,6 @@ impl Sync {
             std::fs::File::open(&full_path)?.set_modified(modified_at.into())?;
         }
 
-        // Refresh this device's manifest to what it now has on disk:
-        // everything scanned, everything freshly downloaded, minus anything
-        // removed because the cloud deletion was propagated.
         let mut manifest: HashSet<PathBuf> =
             local_files.iter().map(|f| f.file_path.clone()).collect();
         manifest.extend(files_to_download);

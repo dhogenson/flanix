@@ -11,6 +11,9 @@ use aws_sdk_s3::{
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
 use flanix_config::Config;
+use std::path::Path;
+use tokio::io::AsyncReadExt;
+use uuid::Uuid;
 
 const GLOBAL_REGION: &str = "us-east-1";
 
@@ -196,6 +199,33 @@ impl Bucket {
         Ok(())
     }
 
+    /// Streams an object back from the bucket and returns its byte size plus
+    /// the blake3 of its content. Used to verify an upload actually landed
+    /// intact instead of trusting that a successful PUT means the bytes match.
+    pub async fn object_content_hash(&self, key: &str) -> Result<(u64, String), SyncError> {
+        let response = self
+            .client
+            .get_object()
+            .bucket(&self.name)
+            .key(key)
+            .send()
+            .await?;
+
+        let size = response.content_length().unwrap_or_default() as u64;
+        let mut reader = response.body.into_async_read();
+        let mut hasher = blake3::Hasher::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = reader.read(&mut buf).await?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+
+        Ok((size, hasher.finalize().to_hex().to_string()))
+    }
+
     pub async fn list_objects(&self) -> Result<Vec<String>, SyncError> {
         let mut keys = Vec::new();
         let mut continuation_token: Option<String> = None;
@@ -232,12 +262,34 @@ impl Bucket {
             .send()
             .await?;
 
-        // Steam file to disk
-        let mut file = tokio::fs::File::create(path).await?;
-        let mut body = response.body.into_async_read();
-        tokio::io::copy(&mut body, &mut file).await?;
-        file.sync_all().await?;
+        // Never write directly to the destination: `File::create` truncates it
+        // before a byte of the stream has arrived, so an interrupted or failed
+        // download would corrupt the pre-existing local copy. Stream into a
+        // temp file in the same directory, sync it, then atomically rename it
+        // over the destination. Until the rename the old file is untouched; on
+        // any error the temp file is removed.
+        let destination = Path::new(path);
+        let file_name = destination
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "download".to_string());
+        let tmp_path =
+            destination.with_file_name(format!(".flanix-tmp-{file_name}-{}", Uuid::new_v4()));
 
-        Ok(())
+        let result = async {
+            let mut file = tokio::fs::File::create(&tmp_path).await?;
+            let mut body = response.body.into_async_read();
+            tokio::io::copy(&mut body, &mut file).await?;
+            file.sync_all().await?;
+            tokio::fs::rename(&tmp_path, destination).await?;
+            Ok::<(), SyncError>(())
+        }
+        .await;
+
+        if result.is_err() {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+        }
+
+        result
     }
 }

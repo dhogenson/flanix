@@ -34,6 +34,13 @@ enum Functions {
     Pull {
         #[arg(value_parser = validate_namespace)]
         namespace: String,
+        /// Preview what pull would change/download/delete without modifying anything
+        #[arg(long)]
+        dry_run: bool,
+        /// Answer "yes" to all confirmations (e.g. trashing a file modified
+        /// locally after it was deleted on the cloud)
+        #[arg(long)]
+        yes: bool,
     },
 
     /// Edit config through tui
@@ -59,9 +66,13 @@ async fn main() -> Result<()> {
             let sync = Sync::new(config).await?;
             sync.push(namespace).await
         }
-        Functions::Pull { namespace } => {
+        Functions::Pull {
+            namespace,
+            dry_run,
+            yes,
+        } => {
             let sync = Sync::new(config).await?;
-            sync.pull(namespace).await
+            sync.pull(namespace, dry_run, yes).await
         }
         Functions::Config => {
             let mut app = App::new()?;

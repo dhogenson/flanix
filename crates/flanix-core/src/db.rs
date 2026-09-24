@@ -269,9 +269,6 @@ impl Database {
         Ok(tombstones)
     }
 
-    /// Removes tombstones older than `before`, bounding table growth. Any
-    /// device that hasn't pulled within the TTL may re-back-up the file as
-    /// new the next time it does.
     pub async fn prune_tombstones(
         &self,
         namespace: &str,
@@ -279,20 +276,32 @@ impl Database {
     ) -> Result<u64, DbError> {
         let namespace_id = self.get_namespace_id(namespace).await?;
 
-        let result =
-            sqlx::query("DELETE FROM deleted_files WHERE namespace_id = $1 AND deleted_at < $2")
-                .bind(namespace_id)
-                .bind(before)
-                .execute(&self.pool)
-                .await?;
+        let result = sqlx::query(
+            "DELETE FROM deleted_files df
+             WHERE df.namespace_id = $1
+               AND df.deleted_at < $2
+               AND NOT EXISTS (
+                   SELECT 1 FROM devices d WHERE d.last_seen_at < df.deleted_at
+               )",
+        )
+        .bind(namespace_id)
+        .bind(before)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected())
     }
 
-    /// Inserts the device or refreshes its heartbeat. Kept separate from the
-    /// per-device manifest so a future step can use `last_seen_at` to decide
-    /// when every connected device has observed a deletion before garbage
-    /// collecting its tombstone.
+    pub async fn devices_seen_since(&self, before: DateTime<Utc>) -> Result<bool, DbError> {
+        let all_seen: bool =
+            sqlx::query_scalar("SELECT NOT EXISTS (SELECT 1 FROM devices WHERE last_seen_at < $1)")
+                .bind(before)
+                .fetch_one(&self.pool)
+                .await?;
+
+        Ok(all_seen)
+    }
+
     pub async fn register_device(&self, device_id: Uuid, name: &str) -> Result<(), DbError> {
         sqlx::query(
             "INSERT INTO devices (id, name, last_seen_at)
@@ -307,8 +316,6 @@ impl Database {
         Ok(())
     }
 
-    /// Returns every path this device previously had for a namespace. This is
-    /// the device's own manifest; absence here is never treated as a deletion.
     pub async fn get_device_files(
         &self,
         device_id: Uuid,
@@ -327,8 +334,6 @@ impl Database {
         Ok(paths.into_iter().map(PathBuf::from).collect())
     }
 
-    /// Replaces this device's manifest for a namespace with `paths`. Idempotent,
-    /// so it may be run with the pool even after the sync transaction commits.
     pub async fn replace_device_files(
         &self,
         executor: impl PgExecutor<'_>,
@@ -343,10 +348,6 @@ impl Database {
             .map(|p| p.to_string_lossy().to_string())
             .collect();
 
-        // One statement: drop every manifest entry not in `paths`, then insert
-        // every entry that is. Data-modifying CTEs operate row-disjointly here
-        // (the delete targets paths absent from the list, the insert the
-        // listed ones), so they can share a single executed query.
         sqlx::query(
             "WITH input AS (
                  SELECT $1::uuid AS device_id,
