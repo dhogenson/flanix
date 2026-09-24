@@ -13,6 +13,6 @@ for file in crates/*/migrations/*.sql; do
     psql -v ON_ERROR_STOP=1 -U user -d mydb < "$file"
 done
 
-cargo test --verbose
+cargo test
 
 docker compose -f docker-compose.test.yaml down -v

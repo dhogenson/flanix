@@ -224,3 +224,120 @@ impl<'a> Widget for &mut App<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+
+    #[test]
+    fn next_increments() -> Result<()> {
+        let mut app = App::new()?;
+        app.next();
+        assert_eq!(app.selected.selected(), Some(1));
+
+        Ok(())
+    }
+
+    #[test]
+    fn next_wraps_while_at_max() -> Result<()> {
+        let mut app = App::new()?;
+        app.selected.select(Some(app.items.len() - 1));
+        app.next();
+        assert_eq!(app.selected.selected(), Some(0));
+
+        Ok(())
+    }
+
+    #[test]
+    fn previous_wraps_while_at_zero() -> Result<()> {
+        let mut app = App::new()?;
+        app.previous();
+        assert_eq!(app.selected.selected(), Some(app.items.len() - 1));
+
+        Ok(())
+    }
+
+    #[test]
+    fn previous_decrement() -> Result<()> {
+        let mut app = App::new()?;
+        app.selected.select(Some(1));
+        app.previous();
+        assert_eq!(app.selected.selected(), Some(0));
+
+        Ok(())
+    }
+
+    #[test]
+    fn exit() -> Result<()> {
+        let mut app = App::new()?;
+        app.exit();
+        assert!(app.exit);
+
+        Ok(())
+    }
+
+    #[test]
+    fn ctrl_c_key_event() -> Result<()> {
+        let mut app = App::new()?;
+        app.handle_key_events(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))?;
+        assert!(app.exit);
+
+        Ok(())
+    }
+
+    #[test]
+    fn start_editing() -> Result<()> {
+        let mut app = App::new()?;
+        app.start_editing();
+        assert!(app.editing);
+        Ok(())
+    }
+
+    #[test]
+    fn down_key_event() -> Result<()> {
+        let mut app = App::new()?;
+        app.handle_key_events(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))?;
+        assert_eq!(app.selected.selected(), Some(1));
+
+        Ok(())
+    }
+
+    #[test]
+    fn down_key_event_at_max() -> Result<()> {
+        let mut app = App::new()?;
+        app.selected.select(Some(app.items.len() - 1));
+        app.handle_key_events(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))?;
+        assert_eq!(app.selected.selected(), Some(0));
+
+        Ok(())
+    }
+
+    #[test]
+    fn up_key_event() -> Result<()> {
+        let mut app = App::new()?;
+        app.handle_key_events(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))?;
+        assert_eq!(app.selected.selected(), Some(app.items.len() - 1));
+
+        Ok(())
+    }
+
+    #[test]
+    fn up_key_event_at_max() -> Result<()> {
+        let mut app = App::new()?;
+        app.selected.select(Some(1));
+        app.handle_key_events(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))?;
+        assert_eq!(app.selected.selected(), Some(0));
+
+        Ok(())
+    }
+
+    #[test]
+    fn enter_key_event() -> Result<()> {
+        let mut app = App::new()?;
+        app.handle_key_events(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))?;
+        assert!(app.editing);
+
+        Ok(())
+    }
+}
